@@ -1,0 +1,31 @@
+*{
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+.custom-datepicker {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 1000;
+}
+
+
+.one-month-picker .ant-picker-panels > *:nth-child(2) {
+  display: none;
+}
+
+.one-month-picker .ant-picker-panels > *:first-child button {
+  visibility: visible !important;
+}
+
+.ant-picker-dropdown,
+.ant-select-dropdown {
+  z-index: 1050 !important;
+}
+
+.ant-row {
+  flex-wrap: wrap !important;
+}
