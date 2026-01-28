@@ -42,13 +42,21 @@ const CSVUpload = ({ onDataSourceChange }) => {
         console.log(key, value);
       }
       const response = await axios.post('http://localhost:5000/api/upload/csv', formData);
-      
+
       if (response.data.status === 'success') {
-        message.success(`Successfully uploaded ${response.data.totalRecords} records!`);
+        const inserted = Number(response.data.totalRecords || 0);
+        const apiMsg = response.data.message;
+
+        if (inserted === 0) {
+          message.info(apiMsg || 'No new records were added. The file seems to be already uploaded.');
+        } else {
+          message.success(apiMsg || `Successfully uploaded ${inserted} records!`);
+        }
+
         setFileList([]);
         fetchDataSources(); // Refresh data counts
       } else {
-        message.error('Upload failed');
+        message.error(response.data.message || 'Upload failed');
       }
     } catch (error) {
       const status = error.response?.status;
