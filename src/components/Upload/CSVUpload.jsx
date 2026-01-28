@@ -51,8 +51,18 @@ const CSVUpload = ({ onDataSourceChange }) => {
         message.error('Upload failed');
       }
     } catch (error) {
+      const status = error.response?.status;
+      const apiMessage = error.response?.data?.message;
+
+      if (status === 400) {
+        // Expected validation failure (bad file / no valid rows)
+        message.warning(apiMessage || 'Invalid CSV file. Please check the format and try again.');
+        return;
+      }
+
+      // Unexpected error (server down, bug, etc.)
       console.error('Upload error:', error);
-      message.error(error.response?.data?.message || 'Upload failed');
+      message.error(apiMessage || 'Upload failed due to a server error.');
     } finally {
       setUploading(false);
     }

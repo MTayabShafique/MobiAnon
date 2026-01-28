@@ -80,6 +80,8 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
           // Handle different line endings
           ltrim: true,
           rtrim: true,
+          mapHeaders: ({ header }) =>
+            header?.replace(/^\uFEFF/, '').trim(),
           // Additional options for Windows compatibility
           strict: false,
           skipLinesWithEmptyValues: false
