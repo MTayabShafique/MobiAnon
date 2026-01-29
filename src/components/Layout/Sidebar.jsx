@@ -10,7 +10,11 @@ const Sidebar = ({ collapsed }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setSelectedKey(window.location.pathname === "/guide" ? "2" : "1");
+    const path = window.location.pathname;
+
+    if (path === "/") setSelectedKey("1");
+    else if (path === "/upload") setSelectedKey("2");
+    else if (path === "/guide") setSelectedKey("3");
   }, [window.location.pathname]);
 
   const menuItems = [

@@ -80,6 +80,8 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
           // Handle different line endings
           ltrim: true,
           rtrim: true,
+          mapHeaders: ({ header }) =>
+            header?.replace(/^\uFEFF/, '').trim(),
           // Additional options for Windows compatibility
           strict: false,
           skipLinesWithEmptyValues: false
@@ -228,9 +230,22 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
       }
     }
 
+    const duplicatesEstimated = trips.length - totalInserted;
+
+    if (totalInserted === 0) {
+      return res.json({
+        status: 'success',
+        message: 'No new records were added. This file appears to be already uploaded (all rows were duplicates).',
+        totalRecords: 0,
+        skippedRows,
+        totalRows,
+        duplicateCount: duplicatesEstimated
+      });
+    }
+
     const message = skippedRows > 0 
-      ? `Successfully uploaded ${totalInserted} records. ${skippedRows} rows were skipped (invalid data or coordinates outside New York City area). ${duplicateCount} duplicate records were ignored.`
-      : `Successfully uploaded ${totalInserted} records. ${duplicateCount} duplicate records were ignored.`;
+      ? `Successfully uploaded ${totalInserted} records. ${skippedRows} rows were skipped (invalid data or coordinates outside New York City area). ${duplicatesEstimated} duplicate records were ignored.`
+      : `Successfully uploaded ${totalInserted} records. ${duplicatesEstimated} duplicate records were ignored.`;
 
     res.json({
       status: 'success',
@@ -238,7 +253,7 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
       totalRecords: totalInserted,
       skippedRows: skippedRows,
       totalRows: totalRows,
-      duplicateCount: duplicateCount
+      duplicateCount: duplicatesEstimated
     });
 
   } catch (error) {
