@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <rect width="100%" height="100%" fill="white"/>
+  <text x="450" y="28" text-anchor="middle" font-size="20" font-weight="700">Density Similarity Across k and Temporal Settings</text>
+  <line x1="82" y1="48" x2="82" y2="448" stroke="#111827"/>
+  <line x1="82" y1="448" x2="710" y2="448" stroke="#111827"/>
+  <line x1="76" y1="448" x2="82" y2="448" stroke="#111827"/>
+      <line x1="82" y1="448" x2="710" y2="448" stroke="#e5e7eb"/>
+      <text x="72" y="452" text-anchor="end" font-size="12">0</text>
+<line x1="76" y1="368" x2="82" y2="368" stroke="#111827"/>
+      <line x1="82" y1="368" x2="710" y2="368" stroke="#e5e7eb"/>
+      <text x="72" y="372" text-anchor="end" font-size="12">0.22</text>
+<line x1="76" y1="288" x2="82" y2="288" stroke="#111827"/>
+      <line x1="82" y1="288" x2="710" y2="288" stroke="#e5e7eb"/>
+      <text x="72" y="292" text-anchor="end" font-size="12">0.43</text>
+<line x1="76" y1="208" x2="82" y2="208" stroke="#111827"/>
+      <line x1="82" y1="208" x2="710" y2="208" stroke="#e5e7eb"/>
+      <text x="72" y="212" text-anchor="end" font-size="12">0.65</text>
+<line x1="76" y1="128" x2="82" y2="128" stroke="#111827"/>
+      <line x1="82" y1="128" x2="710" y2="128" stroke="#e5e7eb"/>
+      <text x="72" y="132" text-anchor="end" font-size="12">0.86</text>
+<line x1="76" y1="48" x2="82" y2="48" stroke="#111827"/>
+      <line x1="82" y1="48" x2="710" y2="48" stroke="#e5e7eb"/>
+      <text x="72" y="52" text-anchor="end" font-size="12">1.08</text>
+  <line x1="82" y1="448" x2="82" y2="454" stroke="#111827"/>
+      <text x="82" y="474" text-anchor="middle" font-size="12">1000</text>
+<line x1="291.3333333333333" y1="448" x2="291.3333333333333" y2="454" stroke="#111827"/>
+      <text x="291.3333333333333" y="474" text-anchor="middle" font-size="12">5000</text>
+<line x1="500.66666666666663" y1="448" x2="500.66666666666663" y2="454" stroke="#111827"/>
+      <text x="500.66666666666663" y="474" text-anchor="middle" font-size="12">10000</text>
+<line x1="710" y1="448" x2="710" y2="454" stroke="#111827"/>
+      <text x="710" y="474" text-anchor="middle" font-size="12">25000</text>
+  <polyline points="82,85.45594032005147 291.3333333333333,77.96076588044957 500.66666666666663,77.70175422811025 710,77.6348724480938" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<polyline points="82,79.50500540292546 291.3333333333333,77.77111238316422 500.66666666666663,77.65443724922886 710,77.62962962962956" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<polyline points="82,99.10995323082045 291.3333333333333,82.50568754349109 500.66666666666663,77.9081913516469 710,77.66066322216261" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<polyline points="82,84.71049705435314 291.3333333333333,78.66534925443301 500.66666666666663,77.78868104473065 710,77.64523573641026" fill="none" stroke="#9333ea" stroke-width="2.5"/>
+<polyline points="82,140.94787897246852 291.3333333333333,87.3404317839503 500.66666666666663,80.30171650168955 710,77.90535622271443" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<polyline points="82,99.26315076992199 291.3333333333333,81.16333702033029 500.66666666666663,78.71166460681769 710,77.79252979935211" fill="none" stroke="#0891b2" stroke-width="2.5"/>
+<polyline points="82,169.4765200831793 291.3333333333333,105.18628598369042 500.66666666666663,88.72035072785116 710,80.84024597389913" fill="none" stroke="#4f46e5" stroke-width="2.5"/>
+<polyline points="82,173.50502540363686 291.3333333333333,122.42087295933715 500.66666666666663,97.61568991889459 710,84.73255977184022" fill="none" stroke="#be123c" stroke-width="2.5"/>
+<polyline points="82,256.73021763275415 291.3333333333333,139.88928096448024 500.66666666666663,106.87937709542001 710,92.52142546404554" fill="none" stroke="#65a30d" stroke-width="2.5"/>
+<polyline points="82,329.48421236680804 291.3333333333333,242.4627538902282 500.66666666666663,170.70892062083084 710,107.1391917199299" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<polyline points="82,229.74580036384955 291.3333333333333,159.44149856954925 500.66666666666663,121.14767878013316 710,91.30456000325057" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<polyline points="82,404.12905647519807 291.3333333333333,171.07518109115216 500.66666666666663,150.56874393644955 710,116.89747834990703" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<polyline points="82,253.14218099042253 291.3333333333333,251.252890144271 500.66666666666663,194.5484445393349 710,124.51304256670483" fill="none" stroke="#9333ea" stroke-width="2.5"/>
+<polyline points="291.3333333333333,194.83169247202085 500.66666666666663,142.69566369960597 710,102.26512737755047" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<polyline points="291.3333333333333,329.47267277611326 500.66666666666663,279.851282223982 710,192.5364247256257" fill="none" stroke="#0891b2" stroke-width="2.5"/>
+<polyline points="500.66666666666663,256.7334765567987 710,142.01165964580855" fill="none" stroke="#4f46e5" stroke-width="2.5"/>
+<polyline points="500.66666666666663,299.79562476932176 710,188.1959980579096" fill="none" stroke="#be123c" stroke-width="2.5"/>
+  <circle cx="82" cy="85.45594032005147" r="4" fill="#2563eb"/>
+<circle cx="82" cy="79.50500540292546" r="4" fill="#dc2626"/>
+<circle cx="82" cy="99.10995323082045" r="4" fill="#16a34a"/>
+<circle cx="82" cy="84.71049705435314" r="4" fill="#9333ea"/>
+<circle cx="82" cy="140.94787897246852" r="4" fill="#ea580c"/>
+<circle cx="82" cy="99.26315076992199" r="4" fill="#0891b2"/>
+<circle cx="82" cy="169.4765200831793" r="4" fill="#4f46e5"/>
+<circle cx="82" cy="173.50502540363686" r="4" fill="#be123c"/>
+<circle cx="82" cy="256.73021763275415" r="4" fill="#65a30d"/>
+<circle cx="82" cy="329.48421236680804" r="4" fill="#2563eb"/>
+<circle cx="82" cy="229.74580036384955" r="4" fill="#dc2626"/>
+<circle cx="82" cy="404.12905647519807" r="4" fill="#16a34a"/>
+<circle cx="82" cy="253.14218099042253" r="4" fill="#9333ea"/>
+<circle cx="291.3333333333333" cy="77.96076588044957" r="4" fill="#2563eb"/>
+<circle cx="291.3333333333333" cy="77.77111238316422" r="4" fill="#dc2626"/>
+<circle cx="291.3333333333333" cy="82.50568754349109" r="4" fill="#16a34a"/>
+<circle cx="291.3333333333333" cy="78.66534925443301" r="4" fill="#9333ea"/>
+<circle cx="291.3333333333333" cy="87.3404317839503" r="4" fill="#ea580c"/>
+<circle cx="291.3333333333333" cy="81.16333702033029" r="4" fill="#0891b2"/>
+<circle cx="291.3333333333333" cy="105.18628598369042" r="4" fill="#4f46e5"/>
+<circle cx="291.3333333333333" cy="122.42087295933715" r="4" fill="#be123c"/>
+<circle cx="291.3333333333333" cy="139.88928096448024" r="4" fill="#65a30d"/>
+<circle cx="291.3333333333333" cy="194.83169247202085" r="4" fill="#ea580c"/>
+<circle cx="291.3333333333333" cy="242.4627538902282" r="4" fill="#2563eb"/>
+<circle cx="291.3333333333333" cy="159.44149856954925" r="4" fill="#dc2626"/>
+<circle cx="291.3333333333333" cy="171.07518109115216" r="4" fill="#16a34a"/>
+<circle cx="291.3333333333333" cy="251.252890144271" r="4" fill="#9333ea"/>
+<circle cx="291.3333333333333" cy="329.47267277611326" r="4" fill="#0891b2"/>
+<circle cx="500.66666666666663" cy="77.70175422811025" r="4" fill="#2563eb"/>
+<circle cx="500.66666666666663" cy="77.65443724922886" r="4" fill="#dc2626"/>
+<circle cx="500.66666666666663" cy="77.9081913516469" r="4" fill="#16a34a"/>
+<circle cx="500.66666666666663" cy="77.78868104473065" r="4" fill="#9333ea"/>
+<circle cx="500.66666666666663" cy="80.30171650168955" r="4" fill="#ea580c"/>
+<circle cx="500.66666666666663" cy="78.71166460681769" r="4" fill="#0891b2"/>
+<circle cx="500.66666666666663" cy="88.72035072785116" r="4" fill="#4f46e5"/>
+<circle cx="500.66666666666663" cy="97.61568991889459" r="4" fill="#be123c"/>
+<circle cx="500.66666666666663" cy="106.87937709542001" r="4" fill="#65a30d"/>
+<circle cx="500.66666666666663" cy="142.69566369960597" r="4" fill="#ea580c"/>
+<circle cx="500.66666666666663" cy="170.70892062083084" r="4" fill="#2563eb"/>
+<circle cx="500.66666666666663" cy="256.7334765567987" r="4" fill="#4f46e5"/>
+<circle cx="500.66666666666663" cy="121.14767878013316" r="4" fill="#dc2626"/>
+<circle cx="500.66666666666663" cy="150.56874393644955" r="4" fill="#16a34a"/>
+<circle cx="500.66666666666663" cy="194.5484445393349" r="4" fill="#9333ea"/>
+<circle cx="500.66666666666663" cy="299.79562476932176" r="4" fill="#be123c"/>
+<circle cx="500.66666666666663" cy="279.851282223982" r="4" fill="#0891b2"/>
+<circle cx="710" cy="77.6348724480938" r="4" fill="#2563eb"/>
+<circle cx="710" cy="77.62962962962956" r="4" fill="#dc2626"/>
+<circle cx="710" cy="77.66066322216261" r="4" fill="#16a34a"/>
+<circle cx="710" cy="77.64523573641026" r="4" fill="#9333ea"/>
+<circle cx="710" cy="77.90535622271443" r="4" fill="#ea580c"/>
+<circle cx="710" cy="77.79252979935211" r="4" fill="#0891b2"/>
+<circle cx="710" cy="80.84024597389913" r="4" fill="#4f46e5"/>
+<circle cx="710" cy="84.73255977184022" r="4" fill="#be123c"/>
+<circle cx="710" cy="92.52142546404554" r="4" fill="#65a30d"/>
+<circle cx="710" cy="102.26512737755047" r="4" fill="#ea580c"/>
+<circle cx="710" cy="107.1391917199299" r="4" fill="#2563eb"/>
+<circle cx="710" cy="142.01165964580855" r="4" fill="#4f46e5"/>
+<circle cx="710" cy="91.30456000325057" r="4" fill="#dc2626"/>
+<circle cx="710" cy="116.89747834990703" r="4" fill="#16a34a"/>
+<circle cx="710" cy="124.51304256670483" r="4" fill="#9333ea"/>
+<circle cx="710" cy="188.1959980579096" r="4" fill="#be123c"/>
+<circle cx="710" cy="192.5364247256257" r="4" fill="#0891b2"/>
+  <text x="396" y="496" text-anchor="middle" font-size="14">Sample size (rows)</text>
+  <text x="22" y="248" transform="rotate(-90 22 248)" text-anchor="middle" font-size="14">Density Similarity (score)</text>
+  <line x1="738" y1="48" x2="760" y2="48" stroke="#2563eb" stroke-width="3"/>
+      <text x="768" y="52" font-size="12">merge-nearest, none, k=5</text>
+<line x1="738" y1="70" x2="760" y2="70" stroke="#dc2626" stroke-width="3"/>
+      <text x="768" y="74" font-size="12">suppression-baseline, none, k=5</text>
+<line x1="738" y1="92" x2="760" y2="92" stroke="#16a34a" stroke-width="3"/>
+      <text x="768" y="96" font-size="12">merge-nearest, none, k=10</text>
+<line x1="738" y1="114" x2="760" y2="114" stroke="#9333ea" stroke-width="3"/>
+      <text x="768" y="118" font-size="12">suppression-baseline, none, k=10</text>
+<line x1="738" y1="136" x2="760" y2="136" stroke="#ea580c" stroke-width="3"/>
+      <text x="768" y="140" font-size="12">merge-nearest, none, k=20</text>
+<line x1="738" y1="158" x2="760" y2="158" stroke="#0891b2" stroke-width="3"/>
+      <text x="768" y="162" font-size="12">suppression-baseline, none, k=20</text>
+<line x1="738" y1="180" x2="760" y2="180" stroke="#4f46e5" stroke-width="3"/>
+      <text x="768" y="184" font-size="12">merge-nearest, period, k=5</text>
+<line x1="738" y1="202" x2="760" y2="202" stroke="#be123c" stroke-width="3"/>
+      <text x="768" y="206" font-size="12">suppression-baseline, period, k=5</text>
+<line x1="738" y1="224" x2="760" y2="224" stroke="#65a30d" stroke-width="3"/>
+      <text x="768" y="228" font-size="12">merge-nearest, period, k=10</text>
+<line x1="738" y1="246" x2="760" y2="246" stroke="#2563eb" stroke-width="3"/>
+      <text x="768" y="250" font-size="12">merge-nearest, period, k=20</text>
+<line x1="738" y1="268" x2="760" y2="268" stroke="#dc2626" stroke-width="3"/>
+      <text x="768" y="272" font-size="12">merge-nearest, hour, k=5</text>
+<line x1="738" y1="290" x2="760" y2="290" stroke="#16a34a" stroke-width="3"/>
+      <text x="768" y="294" font-size="12">suppression-baseline, hour, k=5</text>
+<line x1="738" y1="312" x2="760" y2="312" stroke="#9333ea" stroke-width="3"/>
+      <text x="768" y="316" font-size="12">merge-nearest, hour, k=10</text>
+<line x1="738" y1="334" x2="760" y2="334" stroke="#ea580c" stroke-width="3"/>
+      <text x="768" y="338" font-size="12">suppression-baseline, period, k=10</text>
+<line x1="738" y1="356" x2="760" y2="356" stroke="#0891b2" stroke-width="3"/>
+      <text x="768" y="360" font-size="12">merge-nearest, hour, k=20</text>
+<line x1="738" y1="378" x2="760" y2="378" stroke="#4f46e5" stroke-width="3"/>
+      <text x="768" y="382" font-size="12">suppression-baseline, period, k=20</text>
+<line x1="738" y1="400" x2="760" y2="400" stroke="#be123c" stroke-width="3"/>
+      <text x="768" y="404" font-size="12">suppression-baseline, hour, k=10</text>
+</svg>

@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "evaluate:anonymization": "node scripts/evaluateAnonymization.js",
+    "db:indexes": "node scripts/applyPerformanceIndexes.js",
+    "benchmark:anonymization": "node scripts/evaluateAnonymization.js --sampleSizes=1000,5000,10000,25000 --k=5,10,20 --temporal=none,period,hour",
+    "benchmark:db": "node scripts/benchmarkDbQueries.js",
+    "report:db": "node scripts/generateDbBenchmarkReport.js",
+    "report:benchmark": "node scripts/generateBenchmarkReport.js",
     "start": "nodemon app.js"
   },
   "keywords": [],
