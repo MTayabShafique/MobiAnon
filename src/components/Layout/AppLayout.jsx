@@ -5,8 +5,8 @@ const { Content } = Layout;
 
 const AppLayout = ({ children }) => {
   return (
-    <Layout>
-      <Content style={{ margin: '16px', padding: '16px', background: '#fff' }}>
+    <Layout className="route-layout">
+      <Content className="route-content">
         {children}
       </Content>
     </Layout>

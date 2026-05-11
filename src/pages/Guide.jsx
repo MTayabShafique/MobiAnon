@@ -1,72 +1,189 @@
 import React from "react";
+import { Alert, Card, Col, Row, Space, Steps, Table, Tag, Timeline, Typography } from "antd";
+import {
+  AppstoreOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  ClusterOutlined,
+  DatabaseOutlined,
+  FileSearchOutlined,
+  GlobalOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
+
+const { Paragraph, Text, Title } = Typography;
+
+const requiredColumns = [
+  { field: "started_at", purpose: "Trip start timestamp" },
+  { field: "ended_at", purpose: "Trip end timestamp" },
+  { field: "start_lat / start_lng", purpose: "Trip start coordinates" },
+  { field: "end_lat / end_lng", purpose: "Trip end coordinates" },
+];
+
+const aliasRows = [
+  { internal: "started_at", examples: "start_time, starttime, start_date, started" },
+  { internal: "ended_at", examples: "end_time, stoptime, end_date, ended" },
+  { internal: "start_lat", examples: "start_latitude, from_lat, start station latitude" },
+  { internal: "start_lng", examples: "start_lon, start_longitude, from_lon" },
+  { internal: "end_lat", examples: "end_latitude, to_lat, end station latitude" },
+  { internal: "end_lng", examples: "end_lon, end_longitude, to_lon" },
+  { internal: "ride_id", examples: "trip_id, rental_id, id; generated when missing" },
+  { internal: "member_casual", examples: "user_type, customer_type, membership_type" },
+];
+
+const metricRows = [
+  { metric: "k Violations", meaning: "Released groups smaller than k. This should be 0." },
+  { metric: "Suppressed", meaning: "Rows withheld because no valid k-anonymous group could be released." },
+  { metric: "Mean Error", meaning: "Average distance between original start points and released centroids." },
+  { metric: "Density Similarity", meaning: "How closely anonymized density preserves the raw spatial pattern." },
+  { metric: "Hotspot Overlap", meaning: "Whether the busiest raw grid cells remain visible after anonymization." },
+  { metric: "DB Query / Backend Total", meaning: "Live performance timings for data retrieval and anonymization." },
+];
 
 const Guide = () => {
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-white shadow-lg rounded-lg border border-gray-200">
-      <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">User Guide</h1>
-      
-      <div className="space-y-6">
-        {/* Grid Size Section */}
-        <div className="p-4 bg-blue-50 rounded-lg">
-          <h2 className="text-xl font-semibold text-blue-800">Grid Size Input</h2>
-          <p className="text-gray-700 mt-2">The grid size determines the level of detail and anonymity in data visualization.</p>
-          <ul className="list-disc pl-6 mt-2 text-gray-600">
-            <li>Smaller grid sizes (e.g., <code className="bg-gray-100 px-1 rounded">0.01</code>) give detailed but less anonymous data.</li>
-            <li>Larger grid sizes (e.g., <code className="bg-gray-100 px-1 rounded">0.04</code>) provide more privacy but lower detail.</li>
-            <li>Choose an appropriate grid size based on your preference for privacy and data granularity.</li>
-          </ul>
+    <div className="guide-page">
+      <section className="tool-hero">
+        <div>
+          <Space size={8} className="hero-kicker">
+            <FileSearchOutlined />
+            <span>User guide</span>
+          </Space>
+          <Title level={2}>Mobility Privacy Demonstrator</Title>
+          <Paragraph>
+            Use this guide to upload comparable mobility datasets, run k-anonymity, compare
+            privacy settings, and interpret the utility metrics for demos or paper figures.
+          </Paragraph>
         </div>
-        
-        {/* Filtering Options */}
-        <div className="p-4 bg-green-50 rounded-lg">
-          <h2 className="text-xl font-semibold text-green-800">Date and Member Type Filters</h2>
-          <p className="text-gray-700 mt-2">These filters help refine your dataset for better insights.</p>
-          <ul className="list-disc pl-6 mt-2 text-gray-600">
-            <li><strong>Select Date:</strong> Pick a day to analyze specific trips.</li>
-            <li><strong>Member Type:</strong> Choose between "Member" or "Casual" users.</li>
-            <li>Use filters to focus on a targeted subset of trips.</li>
-          </ul>
-        </div>
-        
-        {/* Filtering Buttons */}
-        <div className="p-4 bg-yellow-50 rounded-lg">
-          <h2 className="text-xl font-semibold text-yellow-800">Applying Filters</h2>
-          <p className="text-gray-700 mt-2">Use the following options to visualize your data:</p>
-          <ul className="list-disc pl-6 mt-2 text-gray-600">
-            <li>
-              <strong>Apply Original Data Filter:</strong>
-              <ul className="list-disc pl-6">
-                <li>Displays unprocessed trip data.</li>
-                <li>Red markers represent station locations.</li>
-                <li>Blue lines show trip paths.</li>
-                <li>Hover over a point for trip details.</li>
-              </ul>
-            </li>
-            <li><strong>Apply Raw Data Filter:</strong> Displays unprocessed raw trip data.</li>
-            <li><strong>Apply Anonymized Data Filter:</strong> Groups trips into clusters and generates heatmaps.</li>
-          </ul>
-        </div>
-      </div>
-      
-      {/* Backend Logic Section */}
-      <div className="mt-5 p-4 bg-gray-100 rounded-lg">
-        <h2 className="text-lg font-semibold text-gray-800">How the Backend Works</h2>
-        <p className="text-gray-600 mt-2">
-          Our system uses <strong>k-anonymity</strong> to ensure privacy. Data is grouped into clusters, reducing the risk of identifying individuals. The visualization helps users balance between detail and privacy.
-        </p>
-        <h3 className="text-base font-semibold text-gray-800 mt-3">Process Overview:</h3>
-        <ul className="text-gray-600 pl-5 mt-2 list-disc">
-          <li><strong>1. Validate Data:</strong> Ensure trips contain valid latitude and longitude values.</li>
-          <li><strong>2. Grid Mapping:</strong> Divide the map into cells (~1.1 km per cell).</li>
-          <li><strong>3. Grouping:</strong> Cluster trips within each grid cell.</li>
-          <li><strong>4. Merge Small Groups:</strong> If a group has fewer than k trips, merge it with the nearest neighbor.</li>
-          <li><strong>5. Compute Centroids:</strong> Calculate average locations for anonymized trip clusters.</li>
-          <li><strong>6. Visualize:</strong> Display anonymized data using heatmaps.</li>
-        </ul>
-        <p className="text-gray-600 mt-3">
-          This method ensures that no trip can be uniquely identified while maintaining useful insights.
-        </p>
-      </div>
+        <Tag icon={<GlobalOutlined />} color="blue">
+          Global CSV support
+        </Tag>
+      </section>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={14}>
+          <Card title={<Space><UploadOutlined /> Uploading Data</Space>} className="guide-card">
+            <Steps
+              direction="vertical"
+              size="small"
+              items={[
+                {
+                  title: "Prepare a mobility CSV",
+                  description:
+                    "The file should contain trip start/end times and start/end coordinates. It may use Citi Bike headers or common aliases.",
+                },
+                {
+                  title: "Upload on the Upload Data page",
+                  description:
+                    "Files up to 250MB are accepted. The backend streams valid rows into MySQL in chunks, so it does not keep the full valid dataset in memory.",
+                },
+                {
+                  title: "Switch to user data",
+                  description:
+                    "After upload, use the data-source toggle or the Tool page filter to select User Data. The map recenters to the uploaded dataset bounds.",
+                },
+              ]}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={10}>
+          <Card title={<Space><CheckCircleOutlined /> Required Fields</Space>} className="guide-card">
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={requiredColumns}
+              rowKey="field"
+              columns={[
+                { title: "Field", dataIndex: "field" },
+                { title: "Purpose", dataIndex: "purpose" },
+              ]}
+            />
+            <Alert
+              style={{ marginTop: 12 }}
+              type="info"
+              showIcon
+              message="ride_id is optional"
+              description="When a trip identifier is missing, the importer generates one so datasets from other providers can still be tested."
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24}>
+          <Card title={<Space><DatabaseOutlined /> Supported Column Aliases</Space>} className="guide-card">
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={aliasRows}
+              rowKey="internal"
+              columns={[
+                { title: "Internal field", dataIndex: "internal", width: 220 },
+                { title: "Accepted examples", dataIndex: "examples" },
+              ]}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={12}>
+          <Card title={<Space><ClusterOutlined /> Running the Tool</Space>} className="guide-card">
+            <Timeline
+              items={[
+                {
+                  color: "blue",
+                  children: "Choose Preloaded or User Data. Preloaded data is January 2024 Citi Bike; uploaded data can come from another city.",
+                },
+                {
+                  color: "blue",
+                  children: "Set member type, grid size, k value, and temporal privacy mode.",
+                },
+                {
+                  color: "green",
+                  children: "Load Original to inspect raw trip paths, then Run Anonymization to generate released centroids and heat intensity.",
+                },
+                {
+                  color: "green",
+                  children: "Use Compare k Values to run k=5, k=10, and k=20 side by side on the same filters.",
+                },
+              ]}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={12}>
+          <Card title={<Space><AppstoreOutlined /> Key Controls</Space>} className="guide-card">
+            <Space direction="vertical" size={10}>
+              <Text><strong>Grid size:</strong> smaller values preserve more location detail; larger values generalize more area.</Text>
+              <Text><strong>k value:</strong> each released group must contain at least k trips.</Text>
+              <Text><strong>Temporal privacy:</strong> spatial-only is least strict; hour-level grouping is stricter and may suppress more records.</Text>
+              <Text><strong>Theme toggle:</strong> use light or dark mode for demos and screenshots.</Text>
+            </Space>
+          </Card>
+        </Col>
+
+        <Col xs={24}>
+          <Card title={<Space><BarChartOutlined /> Reading the Metrics</Space>} className="guide-card">
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={metricRows}
+              rowKey="metric"
+              columns={[
+                { title: "Metric", dataIndex: "metric", width: 220 },
+                { title: "How to interpret it", dataIndex: "meaning" },
+              ]}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24}>
+          <Alert
+            type="success"
+            showIcon
+            message="What the comparison demonstrates"
+            description="The merge-nearest method keeps sparse regions usable by merging nearby groups until k is satisfied. The suppression baseline is useful for evaluation because it simply hides sparse cells; it can be faster, but it often removes most records under strict temporal privacy."
+          />
+        </Col>
+      </Row>
     </div>
   );
 };

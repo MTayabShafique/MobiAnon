@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Button, message, Card, Row, Col, Switch, Space, Typography, Progress } from 'antd';
-import { UploadOutlined, DownloadOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Upload, Button, message, Card, Row, Col, Switch, Space, Typography, Alert, Descriptions, Tooltip } from 'antd';
+import { UploadOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
 const { Title, Text } = Typography;
+const UPLOAD_DATA_SOURCE_KEY = 'bicycleUploadDataSource';
 
 const CSVUpload = ({ onDataSourceChange }) => {
   const [fileList, setFileList] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [dataSource, setDataSource] = useState('preloaded'); // 'preloaded' or 'user'
+  const [dataSource, setDataSource] = useState(
+    localStorage.getItem(UPLOAD_DATA_SOURCE_KEY) || 'preloaded'
+  ); // 'preloaded' or 'user'
   const [dataInfo, setDataInfo] = useState({ preloaded: 0, userUploaded: 0 });
+  const [uploadResult, setUploadResult] = useState(null);
 
   useEffect(() => {
     fetchDataSources();
@@ -34,6 +38,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
     });
 
     setUploading(true);
+    setUploadResult(null);
 
     try {
       console.log('Sending request to:', 'http://localhost:5000/api/upload/csv');
@@ -46,6 +51,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
       if (response.data.status === 'success') {
         const inserted = Number(response.data.totalRecords || 0);
         const apiMsg = response.data.message;
+        setUploadResult(response.data);
 
         if (inserted === 0) {
           message.info(apiMsg || 'No new records were added. The file seems to be already uploaded.');
@@ -61,6 +67,10 @@ const CSVUpload = ({ onDataSourceChange }) => {
     } catch (error) {
       const status = error.response?.status;
       const apiMessage = error.response?.data?.message;
+      setUploadResult(error.response?.data || {
+        status: 'error',
+        message: apiMessage || 'Upload failed due to a server error.',
+      });
 
       if (status === 400) {
         // Expected validation failure (bad file / no valid rows)
@@ -79,6 +89,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
   const handleDataSourceChange = (checked) => {
     const newDataSource = checked ? 'user' : 'preloaded';
     setDataSource(newDataSource);
+    localStorage.setItem(UPLOAD_DATA_SOURCE_KEY, newDataSource);
     onDataSourceChange(newDataSource);
   };
 
@@ -90,6 +101,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
         fetchDataSources();
         if (dataSource === 'user') {
           setDataSource('preloaded');
+          localStorage.setItem(UPLOAD_DATA_SOURCE_KEY, 'preloaded');
           onDataSourceChange('preloaded');
         }
       }
@@ -153,12 +165,13 @@ const CSVUpload = ({ onDataSourceChange }) => {
         message.error('You can only upload CSV files!');
         return false;
       }
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error('File must be smaller than 10MB!');
+      const isLt250M = file.size / 1024 / 1024 < 250;
+      if (!isLt250M) {
+        message.error('File must be smaller than 250MB!');
         return false;
       }
       setFileList([file]);
+      setUploadResult(null);
       return false;
     },
     fileList,
@@ -174,9 +187,12 @@ const CSVUpload = ({ onDataSourceChange }) => {
             <div>
               <Title level={5}>Upload Your Data</Title>
               <Text type="secondary">
-                Upload a CSV file with bicycle trip data. Download the sample template below.
+                Upload a bike-share or mobility CSV with start/end times and coordinates. Citi Bike headers and common aliases such as start_time, start_latitude, start_lon, end_time, end_latitude, and end_lon are supported.
               </Text>
             </div>
+            <Text type="secondary">
+              Required fields: started_at, ended_at, start_lat, start_lng, end_lat, end_lng. ride_id is optional; generated IDs are used when it is missing.
+            </Text>
 
             <Space>
               <Button 
@@ -200,12 +216,62 @@ const CSVUpload = ({ onDataSourceChange }) => {
             >
               {uploading ? 'Uploading' : 'Upload CSV'}
             </Button>
+
+            {uploadResult && (
+              <Alert
+                type={uploadResult.status === 'success' ? 'success' : 'warning'}
+                showIcon
+                message={uploadResult.message}
+                description={
+                  <Descriptions size="small" column={1}>
+                    {'totalRows' in uploadResult && (
+                      <Descriptions.Item label="Rows read">
+                        {uploadResult.totalRows}
+                      </Descriptions.Item>
+                    )}
+                    {'totalRecords' in uploadResult && (
+                      <Descriptions.Item label="New records added">
+                        {uploadResult.totalRecords}
+                      </Descriptions.Item>
+                    )}
+                    {'duplicateCount' in uploadResult && (
+                      <Descriptions.Item label="Duplicate rows ignored">
+                        {uploadResult.duplicateCount}
+                      </Descriptions.Item>
+                    )}
+                    {'skippedRows' in uploadResult && (
+                      <Descriptions.Item label="Rows skipped">
+                        {uploadResult.skippedRows}
+                      </Descriptions.Item>
+                    )}
+                    {uploadResult.validationSummary && (
+                      <Descriptions.Item label="Validation details">
+                        Missing values: {uploadResult.validationSummary.missingRequiredValues || 0};
+                        invalid dates: {uploadResult.validationSummary.invalidDateRows || 0};
+                        invalid/out-of-range coordinates: {uploadResult.validationSummary.invalidCoordinateRows || 0};
+                        empty rows: {uploadResult.validationSummary.emptyRows || 0}
+                      </Descriptions.Item>
+                    )}
+                    {uploadResult.requiredColumns && (
+                      <Descriptions.Item label="Required columns">
+                        {uploadResult.requiredColumns.join(', ')}
+                      </Descriptions.Item>
+                    )}
+                  </Descriptions>
+                }
+              />
+            )}
           </Space>
         </Col>
 
         <Col span={24}>
           <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-            <Title level={5}>Data Source Toggle</Title>
+            <Title level={5}>
+              Data Source Toggle{' '}
+              <Tooltip title="This switch is remembered locally. Choose user data after uploading rows, then use the Tool page Data Source filter to visualize it.">
+                <span style={{ cursor: 'help', fontSize: 14 }}>?</span>
+              </Tooltip>
+            </Title>
             <Space direction="vertical" style={{ width: '100%' }}>
               <div>
                 <Text>Use Pre-loaded Data</Text>

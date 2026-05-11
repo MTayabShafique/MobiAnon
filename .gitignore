@@ -8,20 +8,42 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+bicycle-be/node_modules
 dist
 dist-ssr
+build
 *.local
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+bicycle-be/.env
+bicycle-be/.env.*
+!bicycle-be/.env.example
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-bicycle-be/202401-citibike-tripdata.csv
+# Uploaded/runtime files
 bicycle-be/uploads/
+
+# Large datasets
+bicycle-be/*.csv
+!bicycle-be/sample-data-template.csv
+
+# Generated benchmark/raw evaluation outputs
+bicycle-be/evaluation-results/
+
+# Test/coverage output
+coverage/
+.nyc_output/

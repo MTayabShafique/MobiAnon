@@ -1,5 +1,5 @@
 import React from "react";
-import { Col, Row, Select, DatePicker } from "antd";
+import { Col, Row, Select, DatePicker, Tooltip } from "antd";
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 
@@ -37,7 +37,12 @@ export const FilterComponent = ({ filterState, setFilterState, setAnonymizedFilt
     <Row gutter={[16, 16]} style={{ marginBottom: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
       {/* Data Source (Dropdown) */}
       <Col xs={24} sm={12} md={8} lg={6}>
-        <label style={{ display: "block", marginBottom: 5 }}>Data Source</label>
+        <label style={{ display: "block", marginBottom: 5 }}>
+          Data Source{" "}
+          <Tooltip title="Choose the built-in Citi Bike data or the rows you uploaded on the Upload Data page.">
+            <span style={{ cursor: "help" }}>?</span>
+          </Tooltip>
+        </label>
         <Select
           style={{ width: "100%" }}
           value={filterState.dataSource}
@@ -51,7 +56,12 @@ export const FilterComponent = ({ filterState, setFilterState, setAnonymizedFilt
 
       {/* Member Type Select */}
       <Col xs={24} sm={12} md={8} lg={6}>
-        <label style={{ display: "block", marginBottom: 5 }}>Member Type</label>
+        <label style={{ display: "block", marginBottom: 5 }}>
+          Member Type{" "}
+          <Tooltip title="Filter trips by Citi Bike user type. All keeps both member and casual trips.">
+            <span style={{ cursor: "help" }}>?</span>
+          </Tooltip>
+        </label>
         <Select
           style={{ width: "100%" }}
           placeholder="Select Type"
@@ -72,7 +82,12 @@ export const FilterComponent = ({ filterState, setFilterState, setAnonymizedFilt
             {/* Select Date — only visible when preloaded is selected */}
       {filterState.dataSource === "preloaded" && (
         <Col xs={24} sm={12} md={8} lg={6}>
-          <label style={{ display: "block", marginBottom: 5 }}>Select Date</label>
+          <label style={{ display: "block", marginBottom: 5 }}>
+            Select Date{" "}
+            <Tooltip title="The preloaded demo data is restricted to January 2024. User-uploaded data is not date-limited here.">
+              <span style={{ cursor: "help" }}>?</span>
+            </Tooltip>
+          </label>
           <DatePicker
             style={{ width: "100%" }}
             placeholder="Select Date"

@@ -3,6 +3,294 @@
   padding: 0;
   margin: 0;
 }
+
+:root {
+  --app-bg: #f3f6fb;
+  --app-surface: #ffffff;
+  --app-surface-soft: #f8fafc;
+  --app-border: #dbe3ee;
+  --app-text: #172033;
+  --app-muted: #64748b;
+  --app-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+  --metric-good: #0f766e;
+  --metric-warn: #b45309;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(22, 119, 255, 0.08), transparent 30%),
+    var(--app-bg);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.theme-dark {
+  --app-bg: #0f172a;
+  --app-surface: #111827;
+  --app-surface-soft: #172033;
+  --app-border: #2d3748;
+  --app-text: #e5e7eb;
+  --app-muted: #9ca3af;
+  --app-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  --metric-good: #2dd4bf;
+  --metric-warn: #fbbf24;
+}
+
+.app-main,
+.route-layout {
+  background: transparent;
+}
+
+.app-content,
+.route-content {
+  margin: 16px;
+  padding: 0;
+  background: transparent;
+}
+
+.app-sidebar {
+  box-shadow: 8px 0 24px rgba(15, 23, 42, 0.08);
+  z-index: 10;
+}
+
+.sidebar-logo {
+  height: 48px;
+  margin: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.map-compare-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-card {
+  height: 100%;
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow);
+}
+
+.guide-card .ant-card-head-title {
+  white-space: normal;
+}
+
+.tool-hero {
+  min-height: 156px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--app-surface), var(--app-surface-soft));
+  box-shadow: var(--app-shadow);
+  animation: panel-rise 260ms ease both;
+}
+
+.tool-hero h2 {
+  margin: 8px 0 8px;
+  color: var(--app-text);
+}
+
+.hero-kicker,
+.control-label,
+.map-subtitle {
+  color: var(--app-muted);
+}
+
+.controls-panel,
+.map-panel,
+.comparison-card,
+.metric-card {
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.controls-panel:hover,
+.comparison-card:hover,
+.metric-card:hover,
+.map-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.12);
+}
+
+.theme-dark .controls-panel:hover,
+.theme-dark .comparison-card:hover,
+.theme-dark .metric-card:hover,
+.theme-dark .map-panel:hover {
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+}
+
+.control-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 650;
+}
+
+.help-dot {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--app-border);
+  color: var(--app-muted);
+  cursor: help;
+  font-size: 12px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.action-row {
+  margin-top: 16px;
+}
+
+.metric-grid,
+.comparison-grid {
+  margin-bottom: 4px;
+}
+
+.metric-card .ant-statistic-title {
+  margin-bottom: 8px;
+}
+
+.metric-card-good .ant-statistic-content {
+  color: var(--metric-good);
+}
+
+.metric-card-warn .ant-statistic-content {
+  color: var(--metric-warn);
+}
+
+.section-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.section-title h4 {
+  margin: 0;
+}
+
+.comparison-card {
+  height: 100%;
+}
+
+.comparison-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.comparison-metrics span {
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-soft);
+}
+
+.comparison-metrics strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--app-text);
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.map-subtitle {
+  display: block;
+  margin: -4px 0 12px;
+}
+
+.main-map {
+  width: 100%;
+  height: min(58vh, 560px);
+  min-height: 430px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+
+.mini-map {
+  width: 100%;
+  height: 260px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+
+.leaflet-container {
+  font: inherit;
+}
+
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1100px) {
+  .map-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-hero,
+  .section-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-content,
+  .route-content {
+    margin: 10px;
+  }
+
+  .tool-hero {
+    padding: 16px;
+  }
+
+  .comparison-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 .custom-datepicker {
   width: 100%;
   padding: 8px;

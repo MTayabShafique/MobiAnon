@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 const { Sider } = Layout;
 
-const Sidebar = ({ collapsed }) => {
+const Sidebar = ({ collapsed, themeMode = "dark" }) => {
   const [selectedKey, setSelectedKey] = useState("1");
   const navigate = useNavigate();
 
@@ -39,22 +39,18 @@ const Sidebar = ({ collapsed }) => {
   ];
 
   return (
-    <Sider collapsible collapsed={collapsed} trigger={null}>
-      <div
-        style={{
-          height: 45,
-          background: "rgba(255, 255, 255, 0.2)",
-          margin: "16px",
-          textAlign: "center",
-          color: "#fff",
-          fontSize: "18px",
-          lineHeight: "45px",
-        }}
-      >
+    <Sider
+      collapsible
+      collapsed={collapsed}
+      trigger={null}
+      theme={themeMode === "dark" ? "dark" : "light"}
+      className="app-sidebar"
+    >
+      <div className="sidebar-logo">
         {collapsed ? "Bi" : "K-Anonymization"}
       </div>
       <Menu
-        theme="dark"
+        theme={themeMode === "dark" ? "dark" : "light"}
         mode="inline"
         items={menuItems}
         selectedKeys={[selectedKey]}

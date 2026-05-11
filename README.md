@@ -1,139 +1,74 @@
-# 2024-MA-Haris-Mustafa
+# Mobility Privacy Demonstrator
 
-# Bicycle Trip Data Visualization
+This project is a full-stack React, Express, and MySQL demonstrator for exploring explainable k-anonymity on mobility trip data. It compares original trip records with anonymized spatial-temporal releases and reports privacy/utility metrics such as k-violations, suppression, spatial error, density similarity, and hotspot overlap.
 
-A full-stack application for visualizing bicycle trip data in New York City. Built with React, Node.js, and MySQL.
+The project supports:
 
-## Windows Setup Guide
+- Original vs anonymized map comparison.
+- Spatial and spatial-temporal k-anonymity.
+- Multi-k comparison for k=5, k=10, and k=20.
+- Upload of Citi Bike-style or similar mobility CSV files.
+- Global latitude/longitude validation instead of NYC-only uploads.
+- Streaming chunk import for larger CSV uploads.
+- Light/dark UI themes for demos and screenshots.
+- Benchmark scripts and paper-ready report/figure generation.
+- Suppression-only baseline comparison against the merge-nearest anonymization method.
 
-### Prerequisites
+## Reproducibility
 
-1. **Install XAMPP**
-   - Download XAMPP from [https://www.apachefriends.org/](https://www.apachefriends.org/)
-   - Install with default options (ensure MySQL and Apache are selected)
-   - Installation path should be `C:\xampp` (default)
+For setup, Laragon/MySQL instructions, database creation, data import, benchmark commands, report generation, and known limitations, see:
 
-2. **Install Node.js**
-   - Download Node.js LTS version from [https://nodejs.org/](https://nodejs.org/)
-   - Install with default options
-   - Verify installation by opening Command Prompt and running:
-     ```bash
-     node --version
-     npm --version
-     ```
+[REPRODUCIBILITY.md](./REPRODUCIBILITY.md)
 
-### Database Setup
+That guide is the primary source of truth for reproducing the current version of the project.
 
-1. **Start MySQL**
-   - Open XAMPP Control Panel
-   - Start MySQL service
-   - Start Apache service (for phpMyAdmin)
+## Quick Start
 
-2. **Create Database**
-   - Open browser and go to [http://localhost/phpmyadmin](http://localhost/phpmyadmin)
-   - Click "New" on the left sidebar
-   - Create database named `bicycle_data`
+```bash
+npm install
+cd bicycle-be
+npm install
+cd ..
+npm run dev
+```
 
-3. **Create Table**
-   ```sql
-   CREATE TABLE trips (
-     id INT AUTO_INCREMENT PRIMARY KEY,
-     ride_id VARCHAR(255) UNIQUE,
-     rideable_type VARCHAR(50),
-     started_at DATETIME,
-     ended_at DATETIME,
-     start_station_name VARCHAR(255),
-     start_station_id VARCHAR(50),
-     end_station_name VARCHAR(255),
-     end_station_id VARCHAR(50),
-     start_lat DECIMAL(10, 8),
-     start_lng DECIMAL(11, 8),
-     end_lat DECIMAL(10, 8),
-     end_lng DECIMAL(11, 8),
-     member_casual VARCHAR(20),
-     is_user_uploaded BOOLEAN DEFAULT FALSE
-   );
+Frontend:
 
-   -- Create index for better performance
-   CREATE INDEX idx_is_user_uploaded ON trips(is_user_uploaded);
-   ```
+```text
+http://localhost:5173
+```
 
-### Project Setup
+Backend:
 
-1. **Clone Repository**
-   - Open Command Prompt
-   - Navigate to desired directory
-   - Clone the repository:
-     ```bash
-     git clone git@gitlab.rz.uni-bamberg.de:mobi/theses/2024-ma-haris-mustafa.git
-     cd bicycle-fe
-     ```
+```text
+http://localhost:5000
+```
 
-2. **Install Dependencies and Start Application**
-   ```bash
-   # Install all dependencies (both frontend and backend)
-   npm install
+## Important Paths
 
-   # Start the application (this will start both frontend and backend)
-   npm run dev
-   ```
+| Path | Purpose |
+| --- | --- |
+| `src/components/Map/MapCompare.jsx` | Main comparison UI |
+| `src/components/Upload/CSVUpload.jsx` | CSV upload/data-source UI |
+| `src/pages/Guide.jsx` | In-app user guide |
+| `bicycle-be/routes/bicycleRoute.js` | Trip/anonymization API routes |
+| `bicycle-be/routes/uploadRoute.js` | Streaming CSV upload API |
+| `bicycle-be/services/anonymization.js` | k-anonymity and baseline methods |
+| `bicycle-be/scripts/evaluateAnonymization.js` | Offline anonymization benchmark |
+| `bicycle-be/scripts/generateBenchmarkReport.js` | Paper report/figure generation |
+| `bicycle-be/db/create-trips-table.sql` | Clean MySQL schema setup |
+| `bicycle-be/db/performance-indexes.sql` | Live query performance indexes |
+| `bicycle-be/paper-results/` | Generated paper-facing reports and figures |
 
-### Loading Initial Data
+## Verification
 
-1. **Download Sample Data**
-   - Download CitiBike trip data CSV file
-   - Rename it to `202401-citibike-tripdata.csv`
-   - Place it in the `bicycle-be` folder
+```bash
+npm run build
+cd bicycle-be
+npm run benchmark:anonymization
+npm run report:benchmark
+npm run benchmark:db
+npm run report:db
+```
 
-2. **Run Data Import Script**
-   ```bash
-   # From bicycle-be directory
-   node dataInsert.js
-   ```
-
-### Running the Application
-
-1. **Start the Application**
-   ```bash
-   # From project root directory
-   npm run dev
-   ```
-   This will automatically start both the frontend and backend servers.
-
-2. **Access the Application**
-   - Open browser and go to [http://localhost:5173](http://localhost:5173)
-   - The backend will be running on port 5000
-
-### Troubleshooting
-
-1. **XAMPP Issues**
-   - Ensure MySQL is running in XAMPP Control Panel
-   - Default MySQL port is 3306
-   - If port conflicts occur, check Task Manager for processes using port 3306
-
-2. **Database Connection Issues**
-   - Verify database name is `bicycle_data`
-   - Check .env file has correct credentials
-   - Default XAMPP MySQL credentials:
-     - Username: root
-     - Password: (empty)
-
-3. **File Upload Issues**
-   - Check if `uploads` directory exists in `bicycle-be`
-   - Ensure Windows user has write permissions
-   - Try running Command Prompt as Administrator
-
-4. **Node.js Issues**
-   - Clear npm cache: `npm cache clean --force`
-   - Delete node_modules and reinstall: 
-     ```bash
-     rm -rf node_modules
-     npm install
-     ```
-
-### Notes
-
-- The application requires both frontend and backend servers to be running simultaneously
-- Sample CSV data must be within New York City coordinates
-- XAMPP's MySQL is recommended for Windows, but any MySQL server will work with proper configuration
-- Keep the backend server running for continuous data upload/download functionality
+On managed Windows laptops, `npm run build` may need to be run in a normal terminal if a sandbox blocks the esbuild worker process.
