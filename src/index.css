@@ -344,11 +344,18 @@ body {
 
 /* ─── Date range hint / empty state ───────────────────────────────────────── */
 .date-range-hint {
-  display: block;
-  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-left: 10px;
   font-size: 11px;
   color: var(--app-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.date-picker-inline {
+  width: min(170px, 100%);
 }
 
 .date-range-empty {
@@ -397,9 +404,17 @@ body {
 .full-width  { width: 100%; }
 
 .action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--app-border);
+}
+
+.action-row-right {
+  margin-left: auto;
 }
 
 /* ─── Metric cards ─────────────────────────────────────────────────────────── */
@@ -881,7 +896,19 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .action-row .ant-space {
-    gap: 8px !important;
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .action-row-right {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .date-range-hint {
+    display: flex;
+    margin-left: 0;
+    margin-top: 6px;
   }
 }

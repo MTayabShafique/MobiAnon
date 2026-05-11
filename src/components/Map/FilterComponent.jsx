@@ -1,9 +1,10 @@
 import React from "react";
-import { Badge, Col, Row, Select, DatePicker, Tag, Tooltip, Typography } from "antd";
+import { Col, Row, Select, DatePicker, Tag, Tooltip, Typography } from "antd";
 import {
   CalendarOutlined,
   DatabaseOutlined,
   QuestionCircleOutlined,
+  TableOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -88,7 +89,7 @@ export const FilterComponent = ({
       {/* Data Source */}
       <Col xs={24} sm={12} md={8} lg={6}>
         <ControlLabel
-          icon={<DatabaseOutlined />}
+          icon={<TableOutlined />}
           text="Data Source"
           helpText="Choose the built-in Citi Bike demo data (January 2024, NYC) or rows you uploaded on the Upload Data page. The map re-centres automatically to the selected dataset."
         />
@@ -158,7 +159,7 @@ export const FilterComponent = ({
             }
           />
           <DatePicker
-            style={{ width: "100%" }}
+            className="date-picker-inline"
             placeholder={datePickerPlaceholder}
             value={filterState.date ? dayjs(filterState.date, "YYYY-MM-DD") : null}
             onChange={handleDateChange}

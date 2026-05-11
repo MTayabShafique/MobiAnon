@@ -10,7 +10,7 @@ import {
 } from "antd";
 import {
   AimOutlined, AppstoreOutlined, BarChartOutlined, ClusterOutlined,
-  CompressOutlined, DatabaseOutlined, DotChartOutlined, EyeInvisibleOutlined,
+  CompressOutlined, ControlOutlined, DatabaseOutlined, DotChartOutlined, EyeInvisibleOutlined,
   FireOutlined, FundOutlined, LineChartOutlined,
   PlayCircleOutlined, QuestionCircleOutlined, RadarChartOutlined,
   RocketOutlined, ThunderboltOutlined,
@@ -497,7 +497,7 @@ const MapCompare = () => {
 
         {/* ── Section 1: Data Filters ── */}
         <div className="controls-section-label">
-          <DatabaseOutlined className="controls-section-icon" />
+          <ControlOutlined className="controls-section-icon" />
           <span>Data Filters</span>
         </div>
         <FilterComponent
@@ -582,42 +582,46 @@ const MapCompare = () => {
         </Row>
 
         {/* ── Action buttons ── */}
-        <Space wrap className="action-row">
-          <Button
-            type="primary"
-            icon={<PlayCircleOutlined />}
-            onClick={() => fetchStopsData(mapStateOriginal.filter, setMapStateOriginal, "original")}
-            loading={mapStateOriginal.loading}
-          >
-            Load Original
-          </Button>
-          <Button
-            type="primary"
-            icon={<ClusterOutlined />}
-            onClick={() => fetchStopsData({ ...mapStateAnonymized.filter, gridSize }, setMapStateAnonymized, "anonymized")}
-            loading={mapStateAnonymized.loading}
-          >
-            Run Anonymization
-          </Button>
-          <Tooltip title="Runs k=5, k=10, and k=20 simultaneously on the same filters so you can compare privacy guarantees and utility loss side-by-side without switching back and forth.">
+        <div className="action-row">
+          <Space wrap>
             <Button
-              icon={<BarChartOutlined />}
-              onClick={() => fetchKComparisonData(mapStateAnonymized.filter, gridSize, setKComparison)}
-              loading={kComparison.loading}
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              onClick={() => fetchStopsData(mapStateOriginal.filter, setMapStateOriginal, "original")}
+              loading={mapStateOriginal.loading}
             >
-              Compare k Values
+              Load Original
             </Button>
-          </Tooltip>
-          <Tooltip title="Open the 3D Privacy-Utility Landscape — an interactive surface showing how suppression and utility change across all k values and temporal modes. Click any bar to apply that configuration.">
             <Button
-              icon={<LineChartOutlined />}
-              onClick={() => setShow3D((v) => !v)}
-              type={show3D ? "primary" : "default"}
+              type="primary"
+              icon={<ClusterOutlined />}
+              onClick={() => fetchStopsData({ ...mapStateAnonymized.filter, gridSize }, setMapStateAnonymized, "anonymized")}
+              loading={mapStateAnonymized.loading}
             >
-              {show3D ? "Hide 3D Landscape" : "3D Landscape"}
+              Run Anonymization
             </Button>
-          </Tooltip>
-        </Space>
+          </Space>
+          <Space wrap className="action-row-right">
+            <Tooltip title="Runs k=5, k=10, and k=20 simultaneously on the same filters so you can compare privacy guarantees and utility loss side-by-side without switching back and forth.">
+              <Button
+                icon={<BarChartOutlined />}
+                onClick={() => fetchKComparisonData(mapStateAnonymized.filter, gridSize, setKComparison)}
+                loading={kComparison.loading}
+              >
+                Compare k Values
+              </Button>
+            </Tooltip>
+            <Tooltip title="Open the 3D Privacy-Utility Landscape — an interactive surface showing how suppression and utility change across all k values and temporal modes. Click any bar to apply that configuration.">
+              <Button
+                icon={<LineChartOutlined />}
+                onClick={() => setShow3D((v) => !v)}
+                type={show3D ? "primary" : "default"}
+              >
+                {show3D ? "Hide 3D Landscape" : "3D Landscape"}
+              </Button>
+            </Tooltip>
+          </Space>
+        </div>
       </Card>
 
       {/* ── 3D Privacy-Utility Landscape ── */}
