@@ -1,34 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ConfigProvider, Layout, theme } from 'antd';
-import SignUp from './components/Auth/SignUp';
-import Login from './components/Auth/Login';
-import PrivateRoute from './components/PrivateRoute/PrivateRoute';
-import Home from './components/Map/MapCompare';
-import AppLayout from './components/Layout/AppLayout';
-import NotFound from './components/NotFound';
-import Sidebar from './components/Layout/Sidebar';
-import Guide from './pages/Guide';
-import Upload from './pages/Upload';
+import { ConfigProvider, Spin, theme } from 'antd';
+import TopNav from './components/Layout/TopNav';
 
-const { Content } = Layout;
+const Home   = lazy(() => import('./components/Map/MapCompare'));
+const Upload = lazy(() => import('./pages/Upload'));
+const Guide  = lazy(() => import('./pages/Guide'));
+const SignUp = lazy(() => import('./components/Auth/SignUp'));
+const Login  = lazy(() => import('./components/Auth/Login'));
+const NotFound = lazy(() => import('./components/NotFound'));
+
 const APP_THEME_KEY = 'bicycleAppTheme';
+
+const PageSpinner = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+    <Spin size="large" tip="Loading…">
+      <div style={{ width: 48, height: 48 }} />
+    </Spin>
+  </div>
+);
 
 function App() {
   const [themeMode, setThemeMode] = useState(() => {
-    try {
-      return localStorage.getItem(APP_THEME_KEY) || 'light';
-    } catch {
-      return 'light';
-    }
+    try { return localStorage.getItem(APP_THEME_KEY) || 'light'; } catch { return 'light'; }
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(APP_THEME_KEY, themeMode);
-    } catch {
-      // Local storage is optional; the visual theme still works for this session.
-    }
+    try { localStorage.setItem(APP_THEME_KEY, themeMode); } catch { /* non-fatal */ }
   }, [themeMode]);
 
   const isDark = themeMode === 'dark';
@@ -46,30 +44,21 @@ function App() {
       }}
     >
       <Router>
-        <Layout className={`app-shell ${isDark ? 'theme-dark' : 'theme-light'}`}>
-          <Sidebar collapsed={false} themeMode={themeMode} />
-          <Layout className="app-main">
-            <Content className="app-content">
+        <div className={`app-shell ${isDark ? 'theme-dark' : 'theme-light'}`}>
+          <TopNav themeMode={themeMode} setThemeMode={setThemeMode} />
+          <main className="app-main">
+            <Suspense fallback={<PageSpinner />}>
               <Routes>
-                <Route path="/signup" element={<SignUp />} />
-                <Route path="/login" element={<Login />} />
-                <Route
-                  path="/"
-                  element={
-                    // <PrivateRoute>
-                      <AppLayout>
-                        <Home themeMode={themeMode} setThemeMode={setThemeMode} />
-                      </AppLayout>
-                    // </PrivateRoute>
-                  }
-                />
-                <Route path="/upload" element={<Upload />} />
-                <Route path="/guide" element={<Guide />} />
-                <Route path="*" element={<NotFound />} />
+                <Route path="/signup"  element={<SignUp />} />
+                <Route path="/login"   element={<Login />} />
+                <Route path="/"        element={<Home />} />
+                <Route path="/upload"  element={<Upload />} />
+                <Route path="/guide"   element={<Guide />} />
+                <Route path="*"        element={<NotFound />} />
               </Routes>
-            </Content>
-          </Layout>
-        </Layout>
+            </Suspense>
+          </main>
+        </div>
       </Router>
     </ConfigProvider>
   );

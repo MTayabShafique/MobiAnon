@@ -3,6 +3,7 @@ import multer from 'multer';
 import csvParser from 'csv-parser';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { pool } from '../db/dbConfig.js';
 
 const router = express.Router();
@@ -135,8 +136,19 @@ const formatValidationDetails = (summary) =>
     .filter(Boolean)
     .join('; ');
 
+// L8: Deterministic ride_id for rows without an explicit ID.
+// Using Date.now() + rowNumber previously produced a different ID each upload,
+// so INSERT IGNORE could not detect duplicate rows across chunks or re-uploads.
+// A SHA-1 of the stable trip fields guarantees the same row always gets the same
+// generated ID, enabling DB-level deduplication via INSERT IGNORE.
+const tripContentHash = (startedAt, startLat, startLng, endLat, endLng) =>
+  `auto-${createHash('sha1')
+    .update(`${startedAt}|${startLat}|${startLng}|${endLat}|${endLng}`)
+    .digest('hex')
+    .slice(0, 20)}`;
+
 const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => {
-  const rideId = getMappedValue(row, columnMap, 'ride_id') || `upload-${Date.now()}-${rowNumber}`;
+  const explicitRideId = getMappedValue(row, columnMap, 'ride_id');
   const startedAt = getMappedValue(row, columnMap, 'started_at') || '';
   const endedAt = getMappedValue(row, columnMap, 'ended_at') || '';
   const startLatRaw = getMappedValue(row, columnMap, 'start_lat');
@@ -144,7 +156,7 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
   const endLatRaw = getMappedValue(row, columnMap, 'end_lat');
   const endLngRaw = getMappedValue(row, columnMap, 'end_lng');
 
-  if (rideId === 'ride_id' && startedAt === 'started_at' && endedAt === 'ended_at') {
+  if (explicitRideId === 'ride_id' && startedAt === 'started_at' && endedAt === 'ended_at') {
     return { status: 'skip-header' };
   }
 
@@ -153,7 +165,8 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
     return { status: 'skip' };
   }
 
-  if (!rideId || !startedAt || !endedAt || !startLatRaw || !startLngRaw || !endLatRaw || !endLngRaw) {
+  // Required fields: rideId absence is tolerated — we will generate a hash instead
+  if (!startedAt || !endedAt || !startLatRaw || !startLngRaw || !endLatRaw || !endLngRaw) {
     validationSummary.missingRequiredValues++;
     return { status: 'skip' };
   }
@@ -185,10 +198,14 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
     return { status: 'skip' };
   }
 
+  // Resolve final ride_id: explicit value wins; otherwise derive a stable hash from
+  // the trip's content so INSERT IGNORE deduplicates across chunks and re-uploads.
+  const finalRideId = explicitRideId || tripContentHash(startedAt, startLat, startLng, endLat, endLng);
+
   return {
     status: 'valid',
     trip: [
-      rideId,
+      finalRideId,
       getMappedValue(row, columnMap, 'rideable_type') || null,
       startedAt,
       endedAt,
@@ -258,25 +275,42 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
     let headersChecked = false;
     let columnMap = null;
     let chunk = [];
-    let pendingFlush = Promise.resolve();
     const chunkSize = 1000;
     const validationSummary = createValidationSummary();
 
-    const flushChunk = () => {
-      if (chunk.length === 0) return pendingFlush;
+    // L7: Concurrency-limited insert pool.
+    // Previously every chunk queued strictly behind a single pendingFlush promise, so
+    // inserts were fully sequential. Allowing 2 parallel inserts doubles DB throughput
+    // on large files. INSERT IGNORE is idempotent so order does not matter for correctness.
+    const MAX_PARALLEL_INSERTS = 2;
+    let activeInserts = 0;
+    const insertErrors = [];
 
+    // Fire an insert immediately — caller controls whether to pause the stream.
+    const runInsert = (rowsToInsert, chunkNumber) => {
+      activeInserts++;
+      insertTripChunk(rowsToInsert)
+        .then((inserted) => {
+          totalInserted += inserted;
+          console.log(`Stream chunk ${chunkNumber}: inserted ${inserted}/${rowsToInsert.length} records`);
+        })
+        .catch((err) => insertErrors.push(err))
+        .finally(() => { activeInserts--; });
+    };
+
+    // Wait for all in-flight inserts to finish before closing
+    const drainInserts = () =>
+      new Promise((resolve) => {
+        const check = () => (activeInserts === 0 ? resolve() : setImmediate(check));
+        check();
+      });
+
+    const flushChunk = () => {
+      if (chunk.length === 0) return;
       const rowsToInsert = chunk;
       chunk = [];
       flushCount++;
-      const chunkNumber = flushCount;
-
-      pendingFlush = pendingFlush.then(async () => {
-        const inserted = await insertTripChunk(rowsToInsert);
-        totalInserted += inserted;
-        console.log(`Stream chunk ${chunkNumber}: inserted ${inserted}/${rowsToInsert.length} records`);
-      });
-
-      return pendingFlush;
+      runInsert(rowsToInsert, flushCount);
     };
 
     // Read and parse CSV
@@ -335,12 +369,14 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
           chunk.push(normalized.trip);
 
           if (chunk.length >= chunkSize) {
-            parser.pause();
-            flushChunk()
-              .then(() => parser.resume())
-              .catch((error) => {
-                parser.destroy(error);
-              });
+            flushChunk();
+            // Apply backpressure only when both slots are occupied so we never
+            // queue more than MAX_PARALLEL_INSERTS concurrent DB writes.
+            if (activeInserts >= MAX_PARALLEL_INSERTS) {
+              parser.pause();
+              const resume = () => (activeInserts < MAX_PARALLEL_INSERTS ? parser.resume() : setImmediate(resume));
+              setImmediate(resume);
+            }
           }
         })
         .on('end', async () => {
@@ -350,8 +386,11 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
           }
 
           try {
-            await flushChunk();
-            await pendingFlush;
+            flushChunk();
+            await drainInserts();
+            if (insertErrors.length > 0) {
+              throw insertErrors[0];
+            }
             console.log(`CSV parsing completed. Total rows: ${totalRows}, Valid trips: ${validRows}, Inserted: ${totalInserted}, Skipped: ${skippedRows}`);
             resolve();
           } catch (flushError) {

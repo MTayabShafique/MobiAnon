@@ -1,160 +1,152 @@
 import React, { useState } from 'react';
+import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { message } from 'antd';
+
+const { Title, Text } = Typography;
 
 const SignUp = () => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [serverError, setServerError] = useState('');
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
+  const [apiError, setApiError] = useState('');
 
   const formik = useFormik({
-    initialValues: {
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    },
+    initialValues: { username: '', email: '', password: '', confirmPassword: '' },
     validationSchema: Yup.object({
       username: Yup.string().required('Username is required'),
-      email: Yup.string().email('Invalid email address').required('Email is required'),
+      email:    Yup.string().email('Invalid email address').required('Email is required'),
       password: Yup.string()
         .min(8, 'Password must be at least 8 characters')
         .required('Password is required'),
       confirmPassword: Yup.string()
         .oneOf([Yup.ref('password'), null], 'Passwords must match')
-        .required('Confirm Password is required'),
+        .required('Please confirm your password'),
     }),
-    onSubmit: async (values) => {
-      setIsSubmitting(true);
-      setServerError('');
+    onSubmit: async (values, { setSubmitting, resetForm }) => {
+      setApiError('');
       try {
         const response = await axios.post(
           'https://eve-backend.mrashid-te.workers.dev/user/signup',
           values
         );
         if (response.data.status === 'success') {
-          message.success(response.data.message || 'Signup successful!');
-          formik.resetForm();
+          resetForm();
           navigate('/login');
         }
       } catch (error) {
-        setServerError(
-          error.response?.data?.message || 'Something went wrong. Please try again later.'
+        setApiError(
+          error.response?.data?.message || 'Something went wrong. Please try again.'
         );
       } finally {
-        setIsSubmitting(false);
+        setSubmitting(false);
       }
     },
   });
 
   return (
-    <div className="container mt-5 p-4 shadow-sm rounded bg-white">
-      <h2 className="text-center mb-4">Sign Up</h2>
-      {serverError && (
-        <div className="alert alert-danger text-center" role="alert">
-          {serverError}
+    <div className="auth-page">
+      <Card className="auth-card">
+        <div className="auth-logo">
+          <div className="auth-logo-icon"><LockOutlined /></div>
+          <Title level={3} style={{ margin: 0 }}>Create account</Title>
+          <Text type="secondary">Join K-Anon Privacy Tool</Text>
         </div>
-      )}
-      <form onSubmit={formik.handleSubmit}>
-        <div className="mb-3">
-          <label htmlFor="username" className="form-label">
-            Username
-          </label>
-          <input
-            type="text"
-            id="username"
-            name="username"
-            className={`form-control ${
-              formik.touched.username && formik.errors.username ? 'is-invalid' : ''
-            }`}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            value={formik.values.username}
+
+        {apiError && (
+          <Alert
+            type="error"
+            message={apiError}
+            showIcon
+            style={{ marginBottom: 20 }}
           />
-          {formik.touched.username && formik.errors.username && (
-            <div className="invalid-feedback">{formik.errors.username}</div>
-          )}
-        </div>
-        <div className="mb-3">
-          <label htmlFor="email" className="form-label">
-            Email
-          </label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            className={`form-control ${
-              formik.touched.email && formik.errors.email ? 'is-invalid' : ''
-            }`}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            value={formik.values.email}
-          />
-          {formik.touched.email && formik.errors.email && (
-            <div className="invalid-feedback">{formik.errors.email}</div>
-          )}
-        </div>
-        <div className="mb-3">
-          <label htmlFor="password" className="form-label">
-            Password
-          </label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            className={`form-control ${
-              formik.touched.password && formik.errors.password ? 'is-invalid' : ''
-            }`}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            value={formik.values.password}
-          />
-          {formik.touched.password && formik.errors.password && (
-            <div className="invalid-feedback">{formik.errors.password}</div>
-          )}
-        </div>
-        <div className="mb-3">
-          <label htmlFor="confirmPassword" className="form-label">
-            Confirm Password
-          </label>
-          <input
-            type="password"
-            id="confirmPassword"
-            name="confirmPassword"
-            className={`form-control ${
-              formik.touched.confirmPassword && formik.errors.confirmPassword ? 'is-invalid' : ''
-            }`}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            value={formik.values.confirmPassword}
-          />
-          {formik.touched.confirmPassword && formik.errors.confirmPassword && (
-            <div className="invalid-feedback">{formik.errors.confirmPassword}</div>
-          )}
-        </div>
-        <div className="d-grid gap-2">
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isSubmitting}
+        )}
+
+        <Form layout="vertical" onFinish={formik.handleSubmit} size="large">
+          <Form.Item
+            label="Username"
+            validateStatus={formik.touched.username && formik.errors.username ? 'error' : ''}
+            help={formik.touched.username && formik.errors.username}
           >
-            {isSubmitting ? 'Signing Up...' : 'Sign Up'}
-          </button>
-        </div>
-        <p className="text-center mt-3">
-          Already have an account?{' '}
-          <button
-            type="button"
-            className="btn btn-link p-0"
-            onClick={() => navigate('/login')}
+            <Input
+              prefix={<UserOutlined />}
+              placeholder="Choose a username"
+              name="username"
+              value={formik.values.username}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              autoComplete="username"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Email"
+            validateStatus={formik.touched.email && formik.errors.email ? 'error' : ''}
+            help={formik.touched.email && formik.errors.email}
           >
-            Login
-          </button>
-        </p>
-      </form>
+            <Input
+              prefix={<MailOutlined />}
+              type="email"
+              placeholder="you@example.com"
+              name="email"
+              value={formik.values.email}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              autoComplete="email"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Password"
+            validateStatus={formik.touched.password && formik.errors.password ? 'error' : ''}
+            help={formik.touched.password && formik.errors.password}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="At least 8 characters"
+              name="password"
+              value={formik.values.password}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              autoComplete="new-password"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Confirm Password"
+            validateStatus={formik.touched.confirmPassword && formik.errors.confirmPassword ? 'error' : ''}
+            help={formik.touched.confirmPassword && formik.errors.confirmPassword}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="Repeat your password"
+              name="confirmPassword"
+              value={formik.values.confirmPassword}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              autoComplete="new-password"
+            />
+          </Form.Item>
+
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={formik.isSubmitting}
+            block
+            style={{ marginTop: 4 }}
+          >
+            Create Account
+          </Button>
+        </Form>
+
+        <div className="auth-footer">
+          <Text type="secondary">Already have an account?</Text>
+          <Button type="link" onClick={() => navigate('/login')} style={{ padding: '0 4px' }}>
+            Sign In
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 };

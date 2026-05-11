@@ -36,10 +36,17 @@ const metricDefinitions = [
   },
   {
     key: 'densityCosineSimilarity',
-    label: 'Density Similarity',
+    label: 'Density Similarity (Cosine)',
     unit: 'score',
     file: 'density-similarity.svg',
     description: 'Cosine similarity between raw and anonymized grid-cell density distributions.',
+  },
+  {
+    key: 'densityJsdSimilarity',
+    label: 'Density Similarity (JSD)',
+    unit: 'score',
+    file: 'density-jsd-similarity.svg',
+    description: '1 − Jensen-Shannon Divergence between raw and anonymized density distributions (higher = more similar).',
   },
   {
     key: 'top10HotspotOverlap',
@@ -198,75 +205,72 @@ const makeMarkdownTable = (rows, columns) => {
 };
 
 const makeBaselineComparison = (rows) => {
-  const mergeRows = rows.filter((row) => (row.method || 'merge-nearest') === 'merge-nearest');
-  const baselineRows = rows.filter((row) => row.method === 'suppression-baseline');
+  const METHOD_LABELS = {
+    'merge-nearest': 'Merge',
+    'suppression-baseline': 'Suppression',
+    'fixed-grid-baseline': 'Fixed-Grid',
+  };
 
-  if (!mergeRows.length || !baselineRows.length) return 'Baseline comparison not available.';
+  const allMethods = ['merge-nearest', 'suppression-baseline', 'fixed-grid-baseline'];
+  const presentMethods = allMethods.filter((m) => rows.some((r) => (r.method || 'merge-nearest') === m));
 
-  const baselineByConfig = new Map(
-    baselineRows.map((row) => [`${row.sampleSize}|${row.temporalGranularity}|${row.k}`, row])
+  if (presentMethods.length < 2) return 'Baseline comparison requires at least two methods.';
+
+  // Index rows by config key per method
+  const byMethod = new Map(
+    presentMethods.map((m) => [
+      m,
+      new Map(
+        rows
+          .filter((r) => (r.method || 'merge-nearest') === m)
+          .map((r) => [`${r.sampleSize}|${r.temporalGranularity}|${r.k}`, r])
+      ),
+    ])
   );
 
-  const comparisonRows = mergeRows
-    .map((mergeRow) => {
-      const baselineRow = baselineByConfig.get(
-        `${mergeRow.sampleSize}|${mergeRow.temporalGranularity}|${mergeRow.k}`
-      );
-      if (!baselineRow) return null;
+  // Use merge-nearest as the reference to enumerate configs
+  const referenceMethod = presentMethods.includes('merge-nearest') ? 'merge-nearest' : presentMethods[0];
+  const referenceRows = Array.from(byMethod.get(referenceMethod).values());
 
-      return {
-        sampleSize: mergeRow.sampleSize,
-        temporalGranularity: mergeRow.temporalGranularity,
-        k: mergeRow.k,
-        mergeSuppressed: mergeRow.suppressedRecords,
-        baselineSuppressed: baselineRow.suppressedRecords,
-        suppressionReduction:
-          baselineRow.suppressedRecords > 0
-            ? 1 - mergeRow.suppressedRecords / baselineRow.suppressedRecords
-            : null,
-        mergeDensity: mergeRow.densityCosineSimilarity,
-        baselineDensity: baselineRow.densityCosineSimilarity,
-        mergeHotspots: mergeRow.top10HotspotOverlap,
-        baselineHotspots: baselineRow.top10HotspotOverlap,
-      };
-    })
-    .filter(Boolean);
+  const maxSample = Math.max(...referenceRows.map((r) => r.sampleSize));
+  const largestConfigs = referenceRows.filter((r) => r.sampleSize === maxSample);
 
-  const maxSample = Math.max(...comparisonRows.map((row) => row.sampleSize));
-  const largestRows = comparisonRows.filter((row) => row.sampleSize === maxSample);
+  const comparisonRows = largestConfigs.map((refRow) => {
+    const configKey = `${refRow.sampleSize}|${refRow.temporalGranularity}|${refRow.k}`;
+    const row = {
+      sampleSize: refRow.sampleSize,
+      temporalGranularity: refRow.temporalGranularity,
+      k: refRow.k,
+    };
+    presentMethods.forEach((m) => {
+      const methodRow = byMethod.get(m)?.get(configKey);
+      const label = METHOD_LABELS[m] || m;
+      row[`${label}_suppressed`] = methodRow?.suppressedRecords ?? 'n/a';
+      row[`${label}_density`] = methodRow?.densityCosineSimilarity ?? null;
+      row[`${label}_jsd`] = methodRow?.densityJsdSimilarity ?? null;
+      row[`${label}_hotspots`] = methodRow?.top10HotspotOverlap ?? null;
+      row[`${label}_spatialErr`] = methodRow?.avgSpatialErrorKm ?? null;
+    });
+    return row;
+  });
 
-  return makeMarkdownTable(largestRows, [
-    { key: 'sampleSize', label: 'Rows', format: (value) => value },
-    { key: 'temporalGranularity', label: 'Temporal Mode', format: (value) => value },
-    { key: 'k', label: 'k', format: (value) => value },
-    { key: 'mergeSuppressed', label: 'Merge Suppressed', format: (value) => value },
-    { key: 'baselineSuppressed', label: 'Baseline Suppressed', format: (value) => value },
-    {
-      key: 'suppressionReduction',
-      label: 'Suppression Reduction',
-      format: (value) => (value === null ? 'n/a' : `${(value * 100).toFixed(1)}%`),
-    },
-    {
-      key: 'mergeDensity',
-      label: 'Merge Density',
-      format: (value) => formatMetric('densityCosineSimilarity', value),
-    },
-    {
-      key: 'baselineDensity',
-      label: 'Baseline Density',
-      format: (value) => formatMetric('densityCosineSimilarity', value),
-    },
-    {
-      key: 'mergeHotspots',
-      label: 'Merge Hotspots',
-      format: (value) => formatMetric('top10HotspotOverlap', value),
-    },
-    {
-      key: 'baselineHotspots',
-      label: 'Baseline Hotspots',
-      format: (value) => formatMetric('top10HotspotOverlap', value),
-    },
-  ]);
+  const dynamicColumns = [
+    { key: 'sampleSize', label: 'Rows', format: (v) => v },
+    { key: 'temporalGranularity', label: 'Temporal', format: (v) => v },
+    { key: 'k', label: 'k', format: (v) => v },
+    ...presentMethods.flatMap((m) => {
+      const label = METHOD_LABELS[m] || m;
+      return [
+        { key: `${label}_suppressed`, label: `${label} Suppressed`, format: (v) => v },
+        { key: `${label}_density`, label: `${label} Cosine`, format: (v) => formatMetric('densityCosineSimilarity', v) },
+        { key: `${label}_jsd`, label: `${label} JSD-Sim`, format: (v) => formatMetric('densityCosineSimilarity', v) },
+        { key: `${label}_hotspots`, label: `${label} Top-10`, format: (v) => formatMetric('top10HotspotOverlap', v) },
+        { key: `${label}_spatialErr`, label: `${label} Err(km)`, format: (v) => formatNumber(v) },
+      ];
+    }),
+  ];
+
+  return makeMarkdownTable(comparisonRows, dynamicColumns);
 };
 
 const main = () => {
@@ -297,7 +301,8 @@ const main = () => {
     { key: 'kViolations', label: 'k-Violations', format: (value) => value },
     { key: 'suppressedRecords', label: 'Suppressed', format: (value) => value },
     { key: 'avgSpatialErrorKm', label: 'Mean Error (km)', format: (value) => formatNumber(value) },
-    { key: 'densityCosineSimilarity', label: 'Density Similarity', format: (value) => formatMetric('densityCosineSimilarity', value) },
+    { key: 'densityCosineSimilarity', label: 'Density (Cosine)', format: (value) => formatMetric('densityCosineSimilarity', value) },
+    { key: 'densityJsdSimilarity', label: 'Density (JSD-Sim)', format: (value) => formatMetric('densityCosineSimilarity', value) },
     { key: 'top10HotspotOverlap', label: 'Top-10 Overlap', format: (value) => formatMetric('top10HotspotOverlap', value) },
   ];
 

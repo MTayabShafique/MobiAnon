@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import csvParser from 'csv-parser';
 import { performance } from 'perf_hooks';
-import { applyKAnonymity, applySuppressionBaseline } from '../services/anonymization.js';
+import { applyKAnonymity, applySuppressionBaseline, applyFixedGridBaseline } from '../services/anonymization.js';
 
 const args = new Map(
   process.argv
@@ -20,12 +20,13 @@ const sampleSizes = (args.get('--sampleSizes') || `${maxRows}`)
 const gridSize = parseFloat(args.get('--gridSize') || '0.01');
 const kValues = (args.get('--k') || '5,10,20').split(',').map((value) => parseInt(value, 10));
 const temporalValues = (args.get('--temporal') || 'none,period,hour').split(',');
-const methodValues = (args.get('--methods') || 'merge-nearest,suppression-baseline').split(',');
+const methodValues = (args.get('--methods') || 'merge-nearest,suppression-baseline,fixed-grid-baseline').split(',');
 const outputDir = args.get('--outputDir') || path.join(process.cwd(), 'evaluation-results');
 
 const methods = {
   'merge-nearest': applyKAnonymity,
   'suppression-baseline': applySuppressionBaseline,
+  'fixed-grid-baseline': applyFixedGridBaseline,
 };
 
 const columnAliases = {
