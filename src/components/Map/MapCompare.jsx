@@ -4,14 +4,14 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Button, Card, Col, Empty, Input, notification, Popover,
+  Alert, Badge, Button, Card, Col, Empty, Input, notification, Popover,
   Row, Select, Skeleton, Space, Spin, Statistic,
   Tag, Tooltip, Typography,
 } from "antd";
 import {
   AimOutlined, AppstoreOutlined, BarChartOutlined, ClusterOutlined,
-  CompressOutlined, ControlOutlined, DatabaseOutlined, DotChartOutlined, EyeInvisibleOutlined,
-  FireOutlined, FundOutlined, LineChartOutlined,
+  CloseOutlined, CompressOutlined, ControlOutlined, DotChartOutlined,
+  EyeInvisibleOutlined, FireOutlined, FundOutlined, LineChartOutlined,
   PlayCircleOutlined, QuestionCircleOutlined, RadarChartOutlined,
   RocketOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -195,8 +195,8 @@ const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle }) =>
       }
       extra={
         hasData
-          ? <Tag color={mapType === "anonymized" ? "blue" : "default"}>{mapKey.stops.length} shown</Tag>
-          : <Tag color="default">no data</Tag>
+          ? <Tag color={mapType === "anonymized" ? "blue" : "default"}>{mapKey.stops.length} Shown</Tag>
+          : <Tag color="default">No Data</Tag>
       }
     >
       <Text type="secondary" className="map-subtitle">{subtitle}</Text>
@@ -360,28 +360,41 @@ const fetchStopsData = async (filter, setMapState, mapType) => {
   }
 };
 
-const fetchKComparisonData = async (filter, gridSize, setComparisonState) => {
+const fetchKComparisonData = async (filter, gridSize, kValues, setComparisonState) => {
   setComparisonState((prev) => ({ ...prev, loading: true }));
   try {
     const results = await Promise.all(
-      [5, 10, 20].map(async (k) => {
+      kValues.map(async (k) => {
         const { data } = await axios.get(`${API}/api/trips/anonymized`, {
           params: { ...filter, k, gridSize, dataSource: filter.dataSource || "preloaded" },
         });
         return {
           k,
-          stops: (data.data || []).map((t) => ({
-            position: [t.centroidLat, t.centroidLng],
-            count: t.count,
-            temporalBucket: t.temporalBucket,
-            cellsMerged: t.cellsMerged,
-            spatialErrorMeanKm: t.spatialErrorMeanKm,
-          })),
+          stops: (data.data || [])
+            .filter((t) =>
+              t.centroidLat != null && t.centroidLng != null &&
+              isFinite(t.centroidLat) && isFinite(t.centroidLng)
+            )
+            .map((t) => ({
+              position: [Number(t.centroidLat), Number(t.centroidLng)],
+              count: t.count,
+              temporalBucket: t.temporalBucket,
+              cellsMerged: t.cellsMerged,
+              spatialErrorMeanKm: t.spatialErrorMeanKm,
+            })),
           metrics: data.metrics || null,
         };
       })
     );
-    setComparisonState({ loading: false, results });
+    setComparisonState({
+      loading: false,
+      results,
+      fetchedWith: {
+        kValues: [...kValues],
+        gridSize,
+        temporalGranularity: filter.temporalGranularity,
+      },
+    });
   } catch (error) {
     setComparisonState((prev) => ({ ...prev, loading: false }));
     notification.error({
@@ -393,15 +406,30 @@ const fetchKComparisonData = async (filter, gridSize, setComparisonState) => {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const TEMPORAL_LABELS = {
+  none:   "Spatial only",
+  day:    "Day bucket",
+  period: "Time period",
+  hour:   "Hour bucket",
+};
+
 const MapCompare = () => {
   const savedSettings = React.useMemo(loadSavedMapSettings, []);
 
   const formatPercent = (v) => typeof v === "number" ? `${(v * 100).toFixed(1)}%` : "n/a";
   const formatNumber  = (v, d = 2) => typeof v === "number" ? v.toFixed(d) : "n/a";
 
-  const [gridSize, setGridSize] = useState(savedSettings?.gridSize || 0.01);
-  const [show3D,   setShow3D]   = useState(false);
-  const [dataSourceInfo, setDataSourceInfo] = useState(null);
+  const [gridSize,        setGridSize]        = useState(savedSettings?.gridSize || 0.01);
+  const [show3D,          setShow3D]          = useState(false);
+  const [showKComparison, setShowKComparison] = useState(false);
+  const [dataSourceInfo,  setDataSourceInfo]  = useState(null);
+  const comparisonRef = React.useRef(null);
+
+  // k values the user wants in the comparison panel (max 4)
+  const initK = savedSettings?.anonymizedFilter?.k ?? 5;
+  const [selectedKValues, setSelectedKValues] = useState(
+    () => [...new Set([initK, 5, 10, 20])].sort((a, b) => a - b).slice(0, 4)
+  );
 
   const defaultFilter = {
     date: "2024-01-01",
@@ -420,7 +448,7 @@ const MapCompare = () => {
     stops: [], metrics: null, loading: false,
     filter: { ...defaultFilter, k: 5, temporalGranularity: "none", ...(savedSettings?.anonymizedFilter || {}) },
   });
-  const [kComparison, setKComparison] = useState({ loading: false, results: [] });
+  const [kComparison, setKComparison] = useState({ loading: false, results: [], fetchedWith: null });
 
   // Load data-source metadata (bounds + counts + date ranges)
   useEffect(() => {
@@ -448,6 +476,15 @@ const MapCompare = () => {
     });
   }, [gridSize, mapStateOriginal.filter, mapStateAnonymized.filter]);
 
+  // Scroll to comparison section whenever it is revealed
+  useEffect(() => {
+    if (showKComparison && comparisonRef.current) {
+      setTimeout(() => {
+        comparisonRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [showKComparison]);
+
   const handleSync = useCallback((center, bounds) => {
     const update = {
       centerLat: center.lat, centerLng: center.lng,
@@ -471,6 +508,15 @@ const MapCompare = () => {
     });
   }, []);
 
+  // Comparison panel is "dirty" when the user has changed k values, gridSize, or temporal
+  // since the last fetch — flags the Update button as primary
+  const isDirty = !!(kComparison.fetchedWith && (
+    JSON.stringify([...selectedKValues].sort((a, b) => a - b)) !==
+      JSON.stringify([...kComparison.fetchedWith.kValues].sort((a, b) => a - b)) ||
+    gridSize !== kComparison.fetchedWith.gridSize ||
+    mapStateAnonymized.filter.temporalGranularity !== kComparison.fetchedWith.temporalGranularity
+  ));
+
   const metrics = mapStateAnonymized.metrics;
   const isMetricLoading = mapStateAnonymized.loading && !metrics;
 
@@ -493,7 +539,7 @@ const MapCompare = () => {
       </section>
 
       {/* ── Controls ── */}
-      <Card className="controls-panel" bodyStyle={{ padding: "20px 24px 16px" }}>
+      <Card className="controls-panel" styles={{ body: { padding: "20px 24px 16px" } }}>
 
         {/* ── Section 1: Data Filters ── */}
         <div className="controls-section-label">
@@ -602,15 +648,57 @@ const MapCompare = () => {
             </Button>
           </Space>
           <Space wrap className="action-row-right">
-            <Tooltip title="Runs k=5, k=10, and k=20 simultaneously on the same filters so you can compare privacy guarantees and utility loss side-by-side without switching back and forth.">
-              <Button
-                icon={<BarChartOutlined />}
-                onClick={() => fetchKComparisonData(mapStateAnonymized.filter, gridSize, setKComparison)}
-                loading={kComparison.loading}
-              >
-                Compare k Values
-              </Button>
-            </Tooltip>
+
+            {/* ── Compare k Values — 3-state smart toggle ── */}
+            {(() => {
+              const hasResults = kComparison.results.length > 0;
+
+              // State 2: results visible → offer to hide
+              if (hasResults && showKComparison) {
+                return (
+                  <Button
+                    type="primary"
+                    icon={<CloseOutlined />}
+                    onClick={() => setShowKComparison(false)}
+                  >
+                    Hide Comparison
+                  </Button>
+                );
+              }
+
+              // State 3: results exist but hidden → green dot badge to catch attention
+              if (hasResults && !showKComparison) {
+                return (
+                  <Badge dot color="#16a34a" offset={[-4, 4]}>
+                    <Button
+                      icon={<BarChartOutlined />}
+                      onClick={() => setShowKComparison(true)}
+                    >
+                      Show Comparison
+                    </Button>
+                  </Badge>
+                );
+              }
+
+              // State 1: no results yet → fetch + auto-reveal
+              return (
+                <Tooltip title={`Runs k=${selectedKValues.join(", ")} side-by-side on the same filters so you can compare privacy guarantees and utility loss without switching back and forth. Adjust k values in the comparison panel header after the first fetch.`}>
+                  <Button
+                    icon={<BarChartOutlined />}
+                    loading={kComparison.loading}
+                    onClick={async () => {
+                      await fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison);
+                      setShowKComparison(true);
+                    }}
+                  >
+                    {kComparison.loading
+                      ? `Comparing k=${selectedKValues.join(", ")}…`
+                      : "Compare k Values"}
+                  </Button>
+                </Tooltip>
+              );
+            })()}
+
             <Tooltip title="Open the 3D Privacy-Utility Landscape — an interactive surface showing how suppression and utility change across all k values and temporal modes. Click any bar to apply that configuration.">
               <Button
                 icon={<LineChartOutlined />}
@@ -687,55 +775,164 @@ const MapCompare = () => {
         </Row>
       )}
 
-      {/* ── Multi-k comparison ── */}
-      {kComparison.results.length > 0 && (
-        <Spin spinning={kComparison.loading}>
-          <div className="section-title">
-            <Space>
+      {/* ── Multi-k comparison — shown only when user has revealed it ── */}
+      {kComparison.results.length > 0 && showKComparison && (
+        <div ref={comparisonRef} className="comparison-section">
+          {/* ── Comparison header ── */}
+          <div className="section-title comparison-section-header">
+            {/* Left: title + help */}
+            <Space wrap>
               <BarChartOutlined />
-              <Title level={4}>Multi-k Comparison</Title>
+              <Title level={4} style={{ margin: 0 }}>Multi-k Comparison</Title>
               <HelpPopover
                 title="Multi-k Comparison"
-                content="Same filters, three k values. Higher k gives stronger privacy guarantees but typically increases suppression and spatial error. Compare the mini-maps and metric rows to see the tradeoff directly."
+                content="Same spatial + temporal filters applied across all chosen k values. Higher k gives stronger privacy guarantees but typically increases suppression and spatial error. Use the dropdown to add/remove k values, then click Update to re-fetch."
               />
             </Space>
-            <Text type="secondary">Same filters — k=5, k=10, k=20.</Text>
-          </div>
-          <Row gutter={[16, 16]} className="comparison-grid">
-            {kComparison.results.map((result) => (
-              <Col xs={24} lg={8} key={result.k}>
-                <Card
-                  size="small"
-                  className="comparison-card"
-                  title={<Space><ClusterOutlined /><span>k = {result.k}</span></Space>}
-                >
-                  {result.stops.length > 0
-                    ? (
-                      <MiniAnonymizedMap
-                        result={result}
-                        center={[mapStateAnonymized.filter.centerLat, mapStateAnonymized.filter.centerLng]}
-                        gridSize={gridSize}
-                      />
-                    )
-                    : <MapEmpty message={`No groups could satisfy k=${result.k} with current filters.`} />
+
+            {/* Right: controls */}
+            <Space wrap className="comparison-controls">
+              {/* k-value multi-select */}
+              <Select
+                mode="multiple"
+                value={selectedKValues}
+                onChange={(vals) => {
+                  if (vals.length > 4) {
+                    notification.warning({ message: "Maximum 4 k values allowed", description: "Remove one before adding another.", duration: 3 });
+                    return;
                   }
-                  {result.metrics && (
-                    <div className="comparison-metrics">
-                      <span>Groups <strong>{result.metrics.outputGroups}</strong></span>
-                      <span>Min group <strong>{result.metrics.minGroupSize}</strong></span>
-                      <span>Suppressed <strong>{result.metrics.suppressedRecords}</strong></span>
-                      <span>Error <strong>{formatNumber(result.metrics.avgSpatialErrorKm)} km</strong></span>
-                      <span>Cosine <strong>{formatPercent(result.metrics.densityCosineSimilarity)}</strong></span>
-                      <span>Hotspots <strong>{formatPercent(result.metrics.top10HotspotOverlap)}</strong></span>
-                      <span>DB <strong>{formatNumber(result.metrics.dbQueryMs)} ms</strong></span>
-                      <span>Total <strong>{formatNumber(result.metrics.totalBackendMs)} ms</strong></span>
-                    </div>
-                  )}
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        </Spin>
+                  if (vals.length === 0) {
+                    notification.warning({ message: "At least one k value required", duration: 2 });
+                    return;
+                  }
+                  setSelectedKValues([...vals].sort((a, b) => a - b));
+                }}
+                style={{ minWidth: 220 }}
+                placeholder="Select k values (max 4)"
+                maxTagCount="responsive"
+                options={Array.from({ length: 19 }, (_, i) => i + 2).map((n) => ({
+                  value: n,
+                  label: `k = ${n}`,
+                }))}
+              />
+
+              {/* Read-only setting tags */}
+              <Tooltip title="Grid size from Anonymization Settings">
+                <Tag icon={<AppstoreOutlined />} color="geekblue" style={{ cursor: "default" }}>
+                  Grid {gridSize}
+                </Tag>
+              </Tooltip>
+              <Tooltip title="Temporal granularity from Anonymization Settings">
+                <Tag icon={<LineChartOutlined />} color="purple" style={{ cursor: "default" }}>
+                  {TEMPORAL_LABELS[mapStateAnonymized.filter.temporalGranularity] ?? mapStateAnonymized.filter.temporalGranularity}
+                </Tag>
+              </Tooltip>
+
+              {/* Update / Re-fetch button */}
+              <Tooltip title={isDirty ? "Settings changed since last fetch — click to update the comparison" : "Re-fetch all k values with the current filters"}>
+                <Button
+                  type={isDirty ? "primary" : "default"}
+                  icon={<BarChartOutlined />}
+                  loading={kComparison.loading}
+                  onClick={() =>
+                    fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison)
+                  }
+                >
+                  {isDirty ? "Update Comparison" : "Re-fetch"}
+                </Button>
+              </Tooltip>
+
+              <Button size="small" icon={<CloseOutlined />} onClick={() => setShowKComparison(false)}>
+                Close
+              </Button>
+            </Space>
+          </div>
+
+          {/* ── Hint: current k not in comparison ── */}
+          {!selectedKValues.includes(mapStateAnonymized.filter.k) && (
+            <Alert
+              type="info"
+              showIcon
+              className="comparison-hint-alert"
+              message={
+                <span>
+                  Your active <strong>k = {mapStateAnonymized.filter.k}</strong> is not included in the comparison.
+                  Add it to see how your current setting stacks up.
+                </span>
+              }
+              action={
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  onClick={() =>
+                    setSelectedKValues((prev) =>
+                      [...new Set([...prev, mapStateAnonymized.filter.k])].sort((a, b) => a - b).slice(0, 4)
+                    )
+                  }
+                >
+                  Add k = {mapStateAnonymized.filter.k}
+                </Button>
+              }
+            />
+          )}
+
+          {/* ── Comparison cards ── */}
+          <Spin spinning={kComparison.loading}>
+            <Row gutter={[16, 16]} className="comparison-grid">
+              {kComparison.results.map((result) => (
+                <Col
+                  xs={24}
+                  sm={kComparison.results.length === 2 ? 12 : 24}
+                  lg={kComparison.results.length <= 3 ? 8 : 6}
+                  key={result.k}
+                >
+                  <Card
+                    size="small"
+                    className={`comparison-card ${result.k === mapStateAnonymized.filter.k ? "comparison-card--active" : ""}`}
+                    title={
+                      <Space>
+                        <ClusterOutlined />
+                        <span>k = {result.k}</span>
+                        {result.k === mapStateAnonymized.filter.k && (
+                          <Tag color="blue">current</Tag>
+                        )}
+                        {result.metrics && (
+                          <Tag color={result.metrics.suppressedRecords === 0 ? "green" : "orange"}>
+                            {result.metrics.suppressedRecords} suppressed
+                          </Tag>
+                        )}
+                      </Space>
+                    }
+                  >
+                    {result.stops.length > 0
+                      ? (
+                        <MiniAnonymizedMap
+                          result={result}
+                          center={[mapStateAnonymized.filter.centerLat, mapStateAnonymized.filter.centerLng]}
+                          gridSize={gridSize}
+                        />
+                      )
+                      : <MapEmpty message={`No groups could satisfy k=${result.k} with current filters.`} />
+                    }
+                    {result.metrics && (
+                      <div className="comparison-metrics">
+                        <span>Groups <strong>{result.metrics.outputGroups}</strong></span>
+                        <span>Min group <strong>{result.metrics.minGroupSize}</strong></span>
+                        <span>Suppressed <strong>{result.metrics.suppressedRecords}</strong></span>
+                        <span>Error <strong>{formatNumber(result.metrics.avgSpatialErrorKm)} km</strong></span>
+                        <span>Cosine <strong>{formatPercent(result.metrics.densityCosineSimilarity)}</strong></span>
+                        <span>Hotspots <strong>{formatPercent(result.metrics.top10HotspotOverlap)}</strong></span>
+                        <span>DB <strong>{formatNumber(result.metrics.dbQueryMs)} ms</strong></span>
+                        <span>Total <strong>{formatNumber(result.metrics.totalBackendMs)} ms</strong></span>
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </Spin>
+        </div>
       )}
 
       {/* ── Map panels ── */}

@@ -26,7 +26,7 @@ const TopNav = ({ themeMode, setThemeMode }) => {
       <button className="topnav-brand" onClick={() => navigate("/")}>
         <span className="topnav-brand-icon"><LockOutlined /></span>
         <span className="topnav-brand-text">
-          <span className="topnav-brand-title">K-Anon</span>
+          <span className="topnav-brand-title">K-Anonymity</span>
           <span className="topnav-brand-sub">Privacy Tool</span>
         </span>
       </button>

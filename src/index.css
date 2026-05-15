@@ -417,6 +417,12 @@ body {
   margin-left: auto;
 }
 
+/* ─── Comparison section (auto-scrolled to on first reveal) ────────────────── */
+.comparison-section {
+  scroll-margin-top: 76px; /* clear the sticky topnav (60px) + breathing room */
+  animation: panel-rise 240ms ease both;
+}
+
 /* ─── Metric cards ─────────────────────────────────────────────────────────── */
 .metric-grid,
 .comparison-grid {
@@ -448,7 +454,7 @@ body {
 /* ─── Section title ────────────────────────────────────────────────────────── */
 .section-title {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-top: 4px;
@@ -457,6 +463,38 @@ body {
 
 .section-title h4 {
   margin: 0;
+}
+
+/* ─── Comparison section header ───────────────────────────────────────────── */
+.comparison-section-header {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--app-surface-soft);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  margin-bottom: 0 !important;
+}
+
+.comparison-controls {
+  flex-shrink: 0;
+}
+
+.comparison-hint-alert {
+  border-radius: 0;
+  border-left: 1px solid var(--app-border);
+  border-right: 1px solid var(--app-border);
+  border-top: none;
+  margin-bottom: 0 !important;
+}
+
+.comparison-grid {
+  padding-top: 14px;
+}
+
+/* Active k card gets a subtle blue left border */
+.comparison-card--active {
+  border-left: 3px solid var(--primary) !important;
 }
 
 /* ─── Comparison metrics grid ─────────────────────────────────────────────── */

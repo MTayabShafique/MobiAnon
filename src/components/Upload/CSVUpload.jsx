@@ -228,8 +228,8 @@ const CSVUpload = ({ onDataSourceChange }) => {
               description={
                 <span>
                   <strong>started_at, ended_at, start_lat, start_lng, end_lat, end_lng</strong> must be present
-                  (any supported alias is fine). <strong>ride_id</strong> is optional — a deterministic
-                  hash is generated when it is missing so re-uploads don't create duplicates.
+                  (any supported alias is fine). <strong>ride_id</strong> is optional, a deterministic
+                  hash is generated when it is missing so re-uploads do not create duplicates.
                 </span>
               }
             />
