@@ -81,7 +81,7 @@ router.get('/trips/anonymized', async (req, res) => {
     const filters = validateCommonQuery(req, res);
     if (!filters) return;
 
-    const { k, gridSize, temporalGranularity } = req.query;
+    const { k, gridSize, temporalGranularity, l, sensitiveAttr } = req.query;
 
     const kValue = parseInt(k, 10);
     if (Number.isNaN(kValue) || kValue < 1) {
@@ -102,10 +102,24 @@ router.get('/trips/anonymized', async (req, res) => {
       });
     }
 
+    // ℓ-Diversity parameters (optional — defaults to plain k-anonymity when omitted)
+    const lValue = l ? parseInt(l, 10) : 1;
+    if (Number.isNaN(lValue) || lValue < 1) {
+      return res.status(400).json({ status: 'error', message: 'Invalid l value' });
+    }
+
+    const allowedSensitiveAttrs = new Set(['none', 'member_casual', 'rideable_type', 'destination_area']);
+    const sensitiveAttrValue = sensitiveAttr || 'none';
+    if (!allowedSensitiveAttrs.has(sensitiveAttrValue)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid sensitiveAttr value' });
+    }
+
     const result = await getAnonymizedTripsInBounds(filters, {
       k: kValue,
       gridSize: gridSizeValue,
       temporalGranularity: temporalGranularityValue,
+      l: lValue,
+      sensitiveAttr: sensitiveAttrValue,
     });
 
     return res.status(result.status === 'error' ? 400 : 200).json(result);

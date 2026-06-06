@@ -15,7 +15,7 @@ export const normalizeLimit = (limit) => {
 
 const buildTripQuery = ({ date, memberType, bounds, dataSource, limit, anonymizationOnly }) => {
   const selectFields = anonymizationOnly
-    ? 'start_lat, start_lng, end_lat, end_lng, ride_id, started_at, ended_at, member_casual'
+    ? 'start_lat, start_lng, end_lat, end_lng, ride_id, started_at, ended_at, member_casual, rideable_type'
     : `ride_id, rideable_type, started_at, ended_at,
         start_station_name, start_lat, start_lng,
         end_station_name, end_lat, end_lng, member_casual`;
@@ -143,6 +143,8 @@ export const getAnonymizedTripsInBounds = async (filters, anonymizationOptions) 
   const anonymizedTrips = await applyKAnonymity(queryResult.rows, anonymizationOptions.k, {
     gridSize: anonymizationOptions.gridSize,
     temporalGranularity: anonymizationOptions.temporalGranularity,
+    l: anonymizationOptions.l,
+    sensitiveAttr: anonymizationOptions.sensitiveAttr,
   });
   const anonymizationMs = performance.now() - anonymizationStarted;
 

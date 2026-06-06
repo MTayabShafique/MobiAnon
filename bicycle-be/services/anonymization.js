@@ -7,8 +7,6 @@ const toNumber = (value) => {
 };
 
 // L2: UTC-consistent temporal bucketing with optional IANA timezone support.
-// Previously date.getHours() used the server's local timezone, producing wrong
-// period/hour buckets for non-NYC datasets stored in UTC.
 const getTemporalBucket = (startedAt, temporalGranularity = 'none', timezone = 'UTC') => {
   if (temporalGranularity === 'none') return 'all';
 
@@ -30,7 +28,6 @@ const getTemporalBucket = (startedAt, temporalGranularity = 'none', timezone = '
         day: '2-digit',
       }).format(date);
 
-      // hour12: false gives "00"–"23"; "24" can appear for midnight in some locales
       const rawHour = new Intl.DateTimeFormat('en-US', {
         timeZone: timezone,
         hour: '2-digit',
@@ -38,7 +35,6 @@ const getTemporalBucket = (startedAt, temporalGranularity = 'none', timezone = '
       }).format(date);
       hour = parseInt(rawHour, 10) % 24;
     } catch {
-      // Invalid timezone string — fall back to UTC
       yyyyMmDd = date.toISOString().slice(0, 10);
       hour = date.getUTCHours();
     }
@@ -118,11 +114,7 @@ const cosineSimilarity = (a, b) => {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
-// L3: Jensen-Shannon Divergence (JSD) between two density distributions.
-// Unlike cosine similarity, JSD treats the inputs as probability distributions
-// and is bounded in [0, 1] (log₂ base). A score of 0 means identical distributions;
-// 1 means completely disjoint. We expose it as 1−JSD so higher = more similar,
-// consistent with densityCosineSimilarity convention.
+// L3: Jensen-Shannon Divergence between two density distributions.
 const jensenShannonDivergence = (a, b) => {
   const totalA = Array.from(a.values()).reduce((s, v) => s + v, 0);
   const totalB = Array.from(b.values()).reduce((s, v) => s + v, 0);
@@ -154,14 +146,79 @@ const topOverlap = (a, b, limit) => {
   return topA.filter((key) => topB.has(key)).length / topA.length;
 };
 
-// L1: 2-phase batch merging.
-//
-// Phase 1 pairs sparse groups with each other before they consume large groups.
-// This avoids the greedy-chain problem where a small group attaches to a large
-// group early, leaving another small group stranded with nothing nearby.
-//
-// Phase 2 is the original greedy fallback for any remaining under-k groups.
-const anonymizeBucket = (bucketTrips, k, gridSize, temporalBucket) => {
+// ─── ℓ-Diversity helpers ──────────────────────────────────────────────────────
+
+/**
+ * Map a trip to its sensitive value for the chosen sensitive attribute.
+ *
+ * Supported attributes:
+ *   'member_casual'    – member | casual (2 distinct values in Citi Bike data)
+ *   'rideable_type'    – classic_bike | electric_bike | docked_bike (up to 3)
+ *   'destination_area' – destination grid cell key derived from end_lat/end_lng,
+ *                        using the same gridSize as the spatial bucketing step.
+ *                        This protects against destination-inference attacks:
+ *                        each released group must cover ≥ ℓ distinct destination areas.
+ */
+const getSensitiveValue = (trip, sensitiveAttr, gridSize) => {
+  if (!sensitiveAttr || sensitiveAttr === 'none') return null;
+  switch (sensitiveAttr) {
+    case 'member_casual':
+      return trip.member_casual ?? null;
+    case 'rideable_type':
+      return trip.rideable_type ?? null;
+    case 'destination_area': {
+      const eLat = toNumber(trip.end_lat);
+      const eLng = toNumber(trip.end_lng);
+      if (eLat === null || eLng === null) return null;
+      return getGridCellKey(eLat, eLng, gridSize);
+    }
+    default:
+      return null;
+  }
+};
+
+/**
+ * Return the number of distinct non-null sensitive values in a group.
+ * Returns Infinity when ℓ-diversity is not active so all comparisons pass.
+ */
+const getLDiversityCount = (group, sensitiveAttr, gridSize) => {
+  if (!sensitiveAttr || sensitiveAttr === 'none') return Infinity;
+  const values = new Set(
+    group.trips
+      .map((t) => getSensitiveValue(t, sensitiveAttr, gridSize))
+      .filter((v) => v !== null && v !== undefined)
+  );
+  return values.size;
+};
+
+/**
+ * A group is valid only when it satisfies BOTH:
+ *   1. k-anonymity  — at least k trips
+ *   2. ℓ-diversity  — at least ℓ distinct sensitive values (when ℓ > 1)
+ */
+const isGroupValid = (group, k, l, sensitiveAttr, gridSize) => {
+  if (group.trips.length < k) return false;
+  if (l > 1) {
+    if (getLDiversityCount(group, sensitiveAttr, gridSize) < l) return false;
+  }
+  return true;
+};
+
+// ─── Core algorithm ───────────────────────────────────────────────────────────
+
+/**
+ * L1 + ℓ-Diversity: 2-phase batch merging extended with ℓ-diversity enforcement.
+ *
+ * Phase 1: greedily pair the two closest groups that are "invalid" (fail k OR ℓ).
+ *   When ℓ-diversity is active, merge preference is weighted toward pairs that
+ *   maximise the gain in distinct sensitive values.
+ *
+ * Phase 2: for any remaining invalid group, merge with the neighbor that gives
+ *   the highest diversity gain; distance is the tiebreaker.
+ */
+const anonymizeBucket = (bucketTrips, k, l, sensitiveAttr, gridSize, temporalBucket) => {
+  const lActive = l > 1 && sensitiveAttr && sensitiveAttr !== 'none';
+
   const gridMap = new Map();
   bucketTrips.forEach((trip) => {
     const cellKey = getGridCellKey(trip.start_lat, trip.start_lng, gridSize);
@@ -176,29 +233,46 @@ const anonymizeBucket = (bucketTrips, k, gridSize, temporalBucket) => {
     centroid: centroidOf(cellTrips),
   }));
 
-  // Phase 1: greedily pair the two closest sparse groups until no pairable pair exists.
+  // Phase 1: greedily pair the two closest invalid groups.
   let changed = true;
   while (changed) {
     changed = false;
-    const sparseIdxs = groups
-      .map((g, i) => (g.trips.length < k ? i : -1))
+    const invalidIdxs = groups
+      .map((g, i) => (!isGroupValid(g, k, l, sensitiveAttr, gridSize) ? i : -1))
       .filter((i) => i !== -1);
 
-    if (sparseIdxs.length < 2) break;
+    if (invalidIdxs.length < 2) break;
 
     let bestI = -1;
     let bestJ = -1;
     let bestDist = Infinity;
+    let bestGain = -1;
 
-    for (let a = 0; a < sparseIdxs.length; a++) {
-      for (let b = a + 1; b < sparseIdxs.length; b++) {
-        const i = sparseIdxs[a];
-        const j = sparseIdxs[b];
+    for (let a = 0; a < invalidIdxs.length; a++) {
+      for (let b = a + 1; b < invalidIdxs.length; b++) {
+        const i = invalidIdxs[a];
+        const j = invalidIdxs[b];
         const dist = haversineKm(groups[i].centroid, groups[j].centroid);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestI = i;
-          bestJ = j;
+
+        if (lActive) {
+          // Prefer merges that yield the highest combined distinct count.
+          const combined = { trips: [...groups[i].trips, ...groups[j].trips] };
+          const gain = getLDiversityCount(combined, sensitiveAttr, gridSize);
+          if (
+            gain > bestGain ||
+            (gain === bestGain && dist < bestDist)
+          ) {
+            bestGain = gain;
+            bestDist = dist;
+            bestI = i;
+            bestJ = j;
+          }
+        } else {
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestI = i;
+            bestJ = j;
+          }
         }
       }
     }
@@ -211,40 +285,77 @@ const anonymizeBucket = (bucketTrips, k, gridSize, temporalBucket) => {
     changed = true;
   }
 
-  // Phase 2: merge any surviving under-k group with its nearest neighbor (any size).
+  // Phase 2: merge any remaining invalid group with its best neighbor.
   while (groups.length > 1) {
-    const smallestIndex = groups.reduce(
-      (best, g, i) => (g.trips.length < groups[best].trips.length ? i : best),
-      0
+    const invalidIdx = groups.findIndex(
+      (g) => !isGroupValid(g, k, l, sensitiveAttr, gridSize)
     );
-    if (groups[smallestIndex].trips.length >= k) break;
+    if (invalidIdx === -1) break;
 
-    let nearestIndex = null;
-    let nearestDistance = Infinity;
+    let bestNeighborIdx = null;
+    let bestNeighborDist = Infinity;
+    let bestNeighborGain = -1;
+
     groups.forEach((candidate, index) => {
-      if (index === smallestIndex) return;
-      const distance = haversineKm(groups[smallestIndex].centroid, candidate.centroid);
-      if (distance < nearestDistance) {
-        nearestIndex = index;
-        nearestDistance = distance;
+      if (index === invalidIdx) return;
+      const dist = haversineKm(groups[invalidIdx].centroid, candidate.centroid);
+
+      if (lActive) {
+        // Candidate's contribution to distinct sensitive values.
+        const currentVals = new Set(
+          groups[invalidIdx].trips
+            .map((t) => getSensitiveValue(t, sensitiveAttr, gridSize))
+            .filter((v) => v !== null)
+        );
+        const candidateVals = new Set(
+          candidate.trips
+            .map((t) => getSensitiveValue(t, sensitiveAttr, gridSize))
+            .filter((v) => v !== null)
+        );
+        const mergedDistinct = new Set([...currentVals, ...candidateVals]).size;
+        const gain = mergedDistinct - currentVals.size; // new distinct values added
+
+        if (
+          gain > bestNeighborGain ||
+          (gain === bestNeighborGain && dist < bestNeighborDist)
+        ) {
+          bestNeighborGain = gain;
+          bestNeighborDist = dist;
+          bestNeighborIdx = index;
+        }
+      } else {
+        if (dist < bestNeighborDist) {
+          bestNeighborDist = dist;
+          bestNeighborIdx = index;
+        }
       }
     });
 
-    const merged = mergeGroups(groups[smallestIndex], groups[nearestIndex]);
-    groups = groups.filter((_, index) => index !== smallestIndex && index !== nearestIndex);
+    if (bestNeighborIdx === null) break;
+
+    const merged = mergeGroups(groups[invalidIdx], groups[bestNeighborIdx]);
+    groups = groups.filter((_, index) => index !== invalidIdx && index !== bestNeighborIdx);
     groups.push(merged);
   }
 
   return groups;
 };
 
+// ─── Trip normalization ───────────────────────────────────────────────────────
+
 // L2: timezone is threaded through so normalizeTrips passes it to getTemporalBucket.
+// Sensitive-attribute fields (member_casual, rideable_type, end_lat, end_lng) are
+// preserved so the ℓ-diversity helpers can access them during anonymization.
 const normalizeTrips = (trips, temporalGranularity, timezone = 'UTC') =>
   trips
     .map((trip) => ({
       ride_id: trip.ride_id,
       start_lat: toNumber(trip.start_lat),
       start_lng: toNumber(trip.start_lng),
+      end_lat: toNumber(trip.end_lat) ?? null,
+      end_lng: toNumber(trip.end_lng) ?? null,
+      member_casual: trip.member_casual ?? null,
+      rideable_type: trip.rideable_type ?? null,
       started_at: trip.started_at,
       temporalBucket: getTemporalBucket(trip.started_at, temporalGranularity, timezone),
     }))
@@ -275,9 +386,6 @@ const buildGridGroups = (bucketTrips, gridSize, temporalBucket) => {
 };
 
 // L4: Fixed-grid baseline groups.
-// Unlike suppression-baseline (which uses the actual trip centroid), this uses
-// the geometric center of each grid cell as the released coordinate. This isolates
-// the contribution of centroid placement from the contribution of the merging step.
 const buildFixedGridGroups = (bucketTrips, gridSize, temporalBucket) => {
   const gridMap = new Map();
   bucketTrips.forEach((trip) => {
@@ -303,26 +411,45 @@ const buildFixedGridGroups = (bucketTrips, gridSize, temporalBucket) => {
   }));
 };
 
+// ─── Response builder ─────────────────────────────────────────────────────────
+
 const buildAnonymizationResponse = ({
   trips,
   validTrips,
   anonymizedGroups,
   suppressedTrips,
   k,
+  l,
+  sensitiveAttr,
   gridSize,
   temporalGranularity,
   method,
 }) => {
+  const lActive = l > 1 && sensitiveAttr && sensitiveAttr !== 'none';
+
   if (anonymizedGroups.length === 0) {
     return {
       status: 'error',
-      message: `No anonymized groups could satisfy k=${k} with temporal granularity "${temporalGranularity}"`,
+      message: (() => {
+        const base = `No anonymized groups could satisfy k=${k}${lActive ? `, ℓ=${l}` : ''} with temporal granularity "${temporalGranularity}".`;
+        if (lActive) {
+          const attrHints = {
+            member_casual:    'Ensure the Member Type filter is set to "All Riders" so both member and casual trips are included.',
+            rideable_type:    'The dataset may not contain enough bike-type diversity in the selected area/date. Try a wider bounding box or a different date.',
+            destination_area: 'Try reducing ℓ, increasing grid size, or selecting a date with more trip volume.',
+          };
+          const hint = attrHints[sensitiveAttr] || 'Try reducing ℓ or choosing a different sensitive attribute.';
+          return `${base} ${hint}`;
+        }
+        return base;
+      })(),
       data: [],
       metrics: {
         method,
         k,
         gridSize,
         temporalGranularity,
+        ...(lActive && { l, sensitiveAttr }),
         totalInput: trips.length,
         validInput: validTrips.length,
         releasedRecords: 0,
@@ -330,6 +457,7 @@ const buildAnonymizationResponse = ({
         suppressionRate: validTrips.length ? suppressedTrips.length / validTrips.length : 0,
         outputGroups: 0,
         kViolations: 0,
+        ...(lActive && { lViolations: 0 }),
       },
     };
   }
@@ -344,6 +472,12 @@ const buildAnonymizationResponse = ({
     const spatialErrorMeanKm =
       distances.reduce((sum, d) => sum + d, 0) / distances.length;
     const spatialErrorMaxKm = Math.max(...distances);
+
+    // Attach per-group ℓ-diversity info for the response
+    const distinctSensitiveValues = lActive
+      ? getLDiversityCount(group, sensitiveAttr, gridSize)
+      : undefined;
+
     return {
       centroidLat: group.centroid.lat,
       centroidLng: group.centroid.lng,
@@ -352,6 +486,7 @@ const buildAnonymizationResponse = ({
       cellsMerged: group.cells.size,
       spatialErrorMeanKm,
       spatialErrorMaxKm,
+      ...(lActive && { distinctSensitiveValues }),
     };
   });
 
@@ -374,6 +509,24 @@ const buildAnonymizationResponse = ({
   );
   const mergedCellTotal = anonymizedTrips.reduce((sum, g) => sum + g.cellsMerged, 0);
   const jsd = jensenShannonDivergence(rawDensity, anonymizedDensity);
+
+  // ℓ-diversity aggregate metrics
+  let lDiversityMetrics = {};
+  if (lActive) {
+    const distinctCounts = anonymizedGroups.map((g) =>
+      getLDiversityCount(g, sensitiveAttr, gridSize)
+    );
+    lDiversityMetrics = {
+      l,
+      sensitiveAttr,
+      lViolations: distinctCounts.filter((c) => c < l).length,
+      minDistinctSensitiveValues: Math.min(...distinctCounts),
+      maxDistinctSensitiveValues: Math.max(...distinctCounts),
+      avgDistinctSensitiveValues: Number(
+        (distinctCounts.reduce((s, c) => s + c, 0) / distinctCounts.length).toFixed(2)
+      ),
+    };
+  }
 
   return {
     status: 'success',
@@ -400,14 +553,16 @@ const buildAnonymizationResponse = ({
       rawDensityCells: rawDensity.size,
       anonymizedDensityCells: anonymizedDensity.size,
       densityCosineSimilarity: cosineSimilarity(rawDensity, anonymizedDensity),
-      // L3: JSD-based similarity (1 − JSD so higher = more similar, consistent with cosine)
       densityJsdSimilarity: Number((1 - jsd).toFixed(4)),
       top5HotspotOverlap: topOverlap(rawDensity, anonymizedDensity, 5),
       top10HotspotOverlap: topOverlap(rawDensity, anonymizedDensity, 10),
       avgCellsMerged: mergedCellTotal / anonymizedTrips.length,
+      ...lDiversityMetrics,
     },
   };
 };
+
+// ─── Input validation ─────────────────────────────────────────────────────────
 
 const validateInput = (trips, k, temporalGranularity, timezone) => {
   if (trips.length < k) {
@@ -429,10 +584,17 @@ const validateInput = (trips, k, temporalGranularity, timezone) => {
   return { status: 'success', validTrips };
 };
 
+// ─── Public exports ───────────────────────────────────────────────────────────
+
 export const applyKAnonymity = async (trips, k, options = {}) => {
   const gridSize = toNumber(options.gridSize) || DEFAULT_GRID_SIZE;
   const temporalGranularity = options.temporalGranularity || 'none';
   const timezone = options.timezone || 'UTC';
+
+  // ℓ-diversity options (l=1 means disabled — same as plain k-anonymity)
+  const l = Number.isInteger(options.l) && options.l >= 2 ? options.l : 1;
+  const sensitiveAttr = options.sensitiveAttr || 'none';
+
   const validation = validateInput(trips, k, temporalGranularity, timezone);
   if (validation.status === 'error') return validation;
 
@@ -448,13 +610,15 @@ export const applyKAnonymity = async (trips, k, options = {}) => {
       return;
     }
 
-    anonymizeBucket(bucketTrips, k, gridSize, temporalBucket).forEach((group) => {
-      if (group.trips.length < k) {
-        suppressedTrips.push(...group.trips);
-      } else {
-        anonymizedGroups.push(group);
+    anonymizeBucket(bucketTrips, k, l, sensitiveAttr, gridSize, temporalBucket).forEach(
+      (group) => {
+        if (!isGroupValid(group, k, l, sensitiveAttr, gridSize)) {
+          suppressedTrips.push(...group.trips);
+        } else {
+          anonymizedGroups.push(group);
+        }
       }
-    });
+    );
   });
 
   return buildAnonymizationResponse({
@@ -463,6 +627,8 @@ export const applyKAnonymity = async (trips, k, options = {}) => {
     anonymizedGroups,
     suppressedTrips,
     k,
+    l,
+    sensitiveAttr,
     gridSize,
     temporalGranularity,
     method: 'merge-nearest',
@@ -502,6 +668,8 @@ export const applySuppressionBaseline = async (trips, k, options = {}) => {
     anonymizedGroups,
     suppressedTrips,
     k,
+    l: 1,
+    sensitiveAttr: 'none',
     gridSize,
     temporalGranularity,
     method: 'suppression-baseline',
@@ -509,10 +677,6 @@ export const applySuppressionBaseline = async (trips, k, options = {}) => {
 };
 
 // L4: Fixed-grid generalization baseline.
-// Releases only grid cells that already satisfy k, with coordinates quantized to
-// the cell center instead of the trip centroid. No merging step.
-// This isolates what the merge-nearest algorithm contributes beyond simply choosing
-// which cells to release.
 export const applyFixedGridBaseline = async (trips, k, options = {}) => {
   const gridSize = toNumber(options.gridSize) || DEFAULT_GRID_SIZE;
   const temporalGranularity = options.temporalGranularity || 'none';
@@ -546,6 +710,8 @@ export const applyFixedGridBaseline = async (trips, k, options = {}) => {
     anonymizedGroups,
     suppressedTrips,
     k,
+    l: 1,
+    sensitiveAttr: 'none',
     gridSize,
     temporalGranularity,
     method: 'fixed-grid-baseline',
