@@ -1,6 +1,6 @@
 const DEFAULT_GRID_SIZE = 0.01;
 const EARTH_RADIUS_KM = 6371;
-// 1 degree of latitude ≈ 111.32 km (used for human-readable noise scale reporting)
+// Used only to report DP location noise in kilometers.
 const KM_PER_DEG_LAT = 111.32;
 
 const toNumber = (value) => {
@@ -8,14 +8,12 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-// ─── ε-Differential Privacy helpers ──────────────────────────────────────────
-
 /**
  * Sample from the Laplace(0, scale) distribution using the inverse-CDF method.
  * This is the standard mechanism for (ε, 0)-differential privacy.
  */
 const laplaceSample = (scale) => {
-  // Avoid log(0) at the tails
+  // Clamp away from the tails so Math.log never receives zero.
   const u = Math.max(Math.min(Math.random() - 0.5, 0.4999), -0.4999);
   return -scale * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
 };
@@ -79,7 +77,7 @@ const applyDPNoise = (groups, epsilon, gridSize) => {
   };
 };
 
-// L2: UTC-consistent temporal bucketing with optional IANA timezone support.
+// Keep temporal buckets stable across deployments; use a supplied IANA timezone only when requested.
 const getTemporalBucket = (startedAt, temporalGranularity = 'none', timezone = 'UTC') => {
   if (temporalGranularity === 'none') return 'all';
 
@@ -187,7 +185,6 @@ const cosineSimilarity = (a, b) => {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
-// L3: Jensen-Shannon Divergence between two density distributions.
 const jensenShannonDivergence = (a, b) => {
   const totalA = Array.from(a.values()).reduce((s, v) => s + v, 0);
   const totalB = Array.from(b.values()).reduce((s, v) => s + v, 0);
@@ -218,8 +215,6 @@ const topOverlap = (a, b, limit) => {
   if (topA.length === 0) return 0;
   return topA.filter((key) => topB.has(key)).length / topA.length;
 };
-
-// ─── ℓ-Diversity helpers ──────────────────────────────────────────────────────
 
 /**
  * Map a trip to its sensitive value for the chosen sensitive attribute.
@@ -277,10 +272,8 @@ const isGroupValid = (group, k, l, sensitiveAttr, gridSize) => {
   return true;
 };
 
-// ─── Core algorithm ───────────────────────────────────────────────────────────
-
 /**
- * L1 + ℓ-Diversity: 2-phase batch merging extended with ℓ-diversity enforcement.
+ * Two-phase batch merging with optional ℓ-diversity enforcement.
  *
  * Phase 1: greedily pair the two closest groups that are "invalid" (fail k OR ℓ).
  *   When ℓ-diversity is active, merge preference is weighted toward pairs that
@@ -414,11 +407,7 @@ const anonymizeBucket = (bucketTrips, k, l, sensitiveAttr, gridSize, temporalBuc
   return groups;
 };
 
-// ─── Trip normalization ───────────────────────────────────────────────────────
-
-// L2: timezone is threaded through so normalizeTrips passes it to getTemporalBucket.
-// Sensitive-attribute fields (member_casual, rideable_type, end_lat, end_lng) are
-// preserved so the ℓ-diversity helpers can access them during anonymization.
+// Keep the sensitive-attribute fields needed by ℓ-diversity checks.
 const normalizeTrips = (trips, temporalGranularity, timezone = 'UTC') =>
   trips
     .map((trip) => ({
@@ -458,7 +447,6 @@ const buildGridGroups = (bucketTrips, gridSize, temporalBucket) => {
   }));
 };
 
-// L4: Fixed-grid baseline groups.
 const buildFixedGridGroups = (bucketTrips, gridSize, temporalBucket) => {
   const gridMap = new Map();
   bucketTrips.forEach((trip) => {
@@ -483,8 +471,6 @@ const buildFixedGridGroups = (bucketTrips, gridSize, temporalBucket) => {
     centroid: cell.centroid,
   }));
 };
-
-// ─── Response builder ─────────────────────────────────────────────────────────
 
 const buildAnonymizationResponse = ({
   trips,
@@ -548,7 +534,6 @@ const buildAnonymizationResponse = ({
       distances.reduce((sum, d) => sum + d, 0) / distances.length;
     const spatialErrorMaxKm = Math.max(...distances);
 
-    // Attach per-group ℓ-diversity info for the response
     const distinctSensitiveValues = lActive
       ? getLDiversityCount(group, sensitiveAttr, gridSize)
       : undefined;
@@ -586,7 +571,6 @@ const buildAnonymizationResponse = ({
   const mergedCellTotal = anonymizedTrips.reduce((sum, g) => sum + g.cellsMerged, 0);
   const jsd = jensenShannonDivergence(rawDensity, anonymizedDensity);
 
-  // ℓ-diversity aggregate metrics
   let lDiversityMetrics = {};
   if (lActive) {
     const distinctCounts = anonymizedGroups.map((g) =>
@@ -646,8 +630,6 @@ const buildAnonymizationResponse = ({
   };
 };
 
-// ─── Input validation ─────────────────────────────────────────────────────────
-
 const validateInput = (trips, k, temporalGranularity, timezone) => {
   if (trips.length < k) {
     return {
@@ -668,18 +650,14 @@ const validateInput = (trips, k, temporalGranularity, timezone) => {
   return { status: 'success', validTrips };
 };
 
-// ─── Public exports ───────────────────────────────────────────────────────────
-
 export const applyKAnonymity = async (trips, k, options = {}) => {
   const gridSize = toNumber(options.gridSize) || DEFAULT_GRID_SIZE;
   const temporalGranularity = options.temporalGranularity || 'none';
   const timezone = options.timezone || 'UTC';
 
-  // ℓ-diversity options (l=1 means disabled — same as plain k-anonymity)
   const l = Number.isInteger(options.l) && options.l >= 2 ? options.l : 1;
   const sensitiveAttr = options.sensitiveAttr || 'none';
 
-  // ε-DP: Infinity means disabled (no noise added)
   const epsilon = (Number.isFinite(options.epsilon) && options.epsilon > 0)
     ? options.epsilon
     : Infinity;
@@ -689,7 +667,6 @@ export const applyKAnonymity = async (trips, k, options = {}) => {
 
   const { validTrips } = validation;
 
-  // ── ℓ-diversity cardinality pre-check ────────────────────────────────────
   // If ℓ exceeds the number of distinct values that actually exist in the
   // dataset for the chosen attribute, no merging strategy can ever satisfy
   // the constraint.  Fail fast with a precise, actionable message instead of
@@ -799,7 +776,6 @@ export const applySuppressionBaseline = async (trips, k, options = {}) => {
   });
 };
 
-// L4: Fixed-grid generalization baseline.
 export const applyFixedGridBaseline = async (trips, k, options = {}) => {
   const gridSize = toNumber(options.gridSize) || DEFAULT_GRID_SIZE;
   const temporalGranularity = options.temporalGranularity || 'none';

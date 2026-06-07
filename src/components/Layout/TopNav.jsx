@@ -22,18 +22,15 @@ const TopNav = ({ themeMode, setThemeMode }) => {
 
   return (
     <header className="topnav">
-      {/* ── Brand ── */}
       <button className="topnav-brand" onClick={() => navigate("/")}>
         <span className="topnav-brand-icon"><LockOutlined /></span>
         <span className="topnav-brand-text">
-          <span className="topnav-brand-title">K-Anonymity</span>
-          <span className="topnav-brand-sub">Privacy Tool</span>
+          <span className="topnav-brand-title">MobiAnon</span>
+          <span className="topnav-brand-sub">Privacy Demonstrator</span>
         </span>
       </button>
 
-      {/* ── Right side ── */}
       <div className="topnav-right">
-        {/* Nav pills */}
         <nav className="topnav-nav" aria-label="Main navigation">
           {NAV_ITEMS.map(({ key, label, icon }) => (
             <button
@@ -47,10 +44,8 @@ const TopNav = ({ themeMode, setThemeMode }) => {
           ))}
         </nav>
 
-        {/* Divider */}
         <div className="topnav-sep" />
 
-        {/* Theme toggle */}
         <Segmented
           value={themeMode}
           onChange={setThemeMode}

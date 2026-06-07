@@ -32,9 +32,7 @@ import { performance } from 'perf_hooks';
 import { pool } from '../db/dbConfig.js';
 import { getAnonymizedTripsInBounds } from '../services/bicycleTrips.js';
 
-// ---------------------------------------------------------------------------
 // CLI argument parsing
-// ---------------------------------------------------------------------------
 const args = new Map(
   process.argv
     .slice(2)
@@ -75,9 +73,7 @@ const baseFilters = {
   },
 };
 
-// ---------------------------------------------------------------------------
 // CSV helpers
-// ---------------------------------------------------------------------------
 const csvEscape = (value) => {
   if (value === undefined || value === null) return '';
   const text = String(value);
@@ -95,9 +91,7 @@ const writeCsv = (filePath, rows) => {
   fs.writeFileSync(filePath, lines.join('\n'));
 };
 
-// ---------------------------------------------------------------------------
 // Benchmark runner
-// ---------------------------------------------------------------------------
 const main = async () => {
   fs.mkdirSync(outputDir, { recursive: true });
 

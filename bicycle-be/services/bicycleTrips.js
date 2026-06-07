@@ -47,7 +47,7 @@ const buildTripQuery = ({ date, memberType, bounds, dataSource, limit, anonymiza
     params.push(memberType);
   }
 
-  sql += ` LIMIT ${limit}`;
+  sql += ` ORDER BY ride_id LIMIT ${limit}`;
 
   return { sql, params };
 };

@@ -25,7 +25,7 @@ const getDateBounds = (dataSourceInfo, dataSource) => {
 };
 
 const HelpIcon = ({ title }) => (
-  <Tooltip title={title} placement="top">
+  <Tooltip title={title} placement="top" overlayClassName="help-tooltip">
     <QuestionCircleOutlined className="control-help-icon" />
   </Tooltip>
 );
@@ -86,7 +86,6 @@ export const FilterComponent = ({
   return (
     <Row gutter={[16, 16]} style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
 
-      {/* Data Source */}
       <Col xs={24} sm={12} md={8} lg={6}>
         <ControlLabel
           icon={<TableOutlined />}
@@ -127,7 +126,6 @@ export const FilterComponent = ({
         />
       </Col>
 
-      {/* Member Type */}
       <Col xs={24} sm={12} md={8} lg={6}>
         <ControlLabel
           icon={<TeamOutlined />}
@@ -159,9 +157,15 @@ export const FilterComponent = ({
             }
           />
           <DatePicker
+            key={`${filterState.dataSource}-${dateBounds?.min?.format("YYYY-MM") ?? "none"}`}
             className="date-picker-inline"
             placeholder={datePickerPlaceholder}
             value={filterState.date ? dayjs(filterState.date, "YYYY-MM-DD") : null}
+            defaultPickerValue={
+              filterState.date
+                ? dayjs(filterState.date, "YYYY-MM-DD")
+                : dateBounds?.min ?? dayjs("2024-01-01")
+            }
             onChange={handleDateChange}
             format="YYYY-MM-DD"
             disabledDate={disabledDate}

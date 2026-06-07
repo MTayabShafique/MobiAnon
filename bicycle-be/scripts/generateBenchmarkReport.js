@@ -12,7 +12,6 @@ const inputDir     = args.get('--inputDir')  || path.join(process.cwd(), 'evalua
 const outputDir    = args.get('--outputDir') || path.join(process.cwd(), 'paper-results');
 const explicitInput = args.get('--input');
 
-// ─── Standard k-anonymity metric definitions ──────────────────────────────────
 
 const metricDefinitions = [
   { key: 'durationMs',              label: 'Runtime',                   unit: 'ms',    file: 'runtime-ms.svg',             description: 'Backend anonymization runtime by sample size.' },
@@ -24,7 +23,6 @@ const metricDefinitions = [
   { key: 'kViolations',             label: 'k-Violations',              unit: 'groups', file: 'k-violations.svg',          description: 'Released groups whose size is below k. This should remain zero.' },
 ];
 
-// ─── ℓ-Diversity metric definitions ──────────────────────────────────────────
 
 const lDiversityMetricDefs = [
   { key: 'suppressedRecords',          label: 'Suppressed Records',       unit: 'records', file: 'l-diversity-suppressed.svg',     description: 'Suppression vs ℓ value — shows how stricter diversity constraints increase suppression.' },
@@ -33,7 +31,6 @@ const lDiversityMetricDefs = [
   { key: 'avgDistinctSensitiveValues', label: 'Avg Distinct Values',      unit: 'values',  file: 'l-diversity-distinct-values.svg', description: 'Average number of distinct sensitive attribute values per released group.' },
 ];
 
-// ─── ε-DP metric definitions ──────────────────────────────────────────────────
 
 const dpMetricDefs = [
   { key: 'avgCentroidDisplacementKm', label: 'Avg Centroid Displacement', unit: 'km',    file: 'dp-centroid-displacement.svg', description: 'Average Laplace noise displacement applied to centroids vs ε.' },
@@ -41,7 +38,6 @@ const dpMetricDefs = [
   { key: 'avgSpatialErrorKm',         label: 'Total Spatial Error',       unit: 'km',    file: 'dp-spatial-error.svg',         description: 'Combined k-anonymity + DP spatial error vs ε.' },
 ];
 
-// ─── I/O helpers ──────────────────────────────────────────────────────────────
 
 const readJson    = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
@@ -81,7 +77,6 @@ const colorFor = (index) => {
   return colors[index % colors.length];
 };
 
-// ─── SVG chart builders ───────────────────────────────────────────────────────
 
 /**
  * Standard line chart — x-axis = sampleSize, series grouped by groupKeyFn.
@@ -240,7 +235,6 @@ const makeParamLineChart = ({
   fs.writeFileSync(outputPath, svg);
 };
 
-// ─── Markdown table builder ───────────────────────────────────────────────────
 
 const makeMarkdownTable = (rows, columns) => {
   if (!rows.length) return '_No data._';
@@ -252,7 +246,6 @@ const makeMarkdownTable = (rows, columns) => {
   return [header, divider, ...body].join('\n');
 };
 
-// ─── Baseline comparison table ────────────────────────────────────────────────
 
 const makeBaselineComparison = (rows) => {
   const METHOD_LABELS = { 'merge-nearest': 'Merge', 'suppression-baseline': 'Suppression', 'fixed-grid-baseline': 'Fixed-Grid' };
@@ -303,7 +296,6 @@ const makeBaselineComparison = (rows) => {
   return makeMarkdownTable(compRows, cols);
 };
 
-// ─── ℓ-Diversity comparison table ────────────────────────────────────────────
 
 const makeLDiversityTable = (rows) => {
   const lRows = rows.filter((r) => r.runType === 'l-diversity' && r.status === 'success');
@@ -332,7 +324,6 @@ const makeLDiversityTable = (rows) => {
   return makeMarkdownTable(tableRows, cols);
 };
 
-// ─── ε-DP comparison table ────────────────────────────────────────────────────
 
 const makeDPTable = (rows) => {
   const dpRows = rows.filter((r) => r.runType === 'epsilon-dp' && r.status === 'success');
@@ -359,7 +350,6 @@ const makeDPTable = (rows) => {
   return makeMarkdownTable(tableRows, cols);
 };
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 
 const main = () => {
   const inputPath = findLatestBenchmark();
@@ -369,7 +359,6 @@ const main = () => {
 
   const successful = rows.filter((r) => r.status === 'success');
 
-  // ── Standard k-anonymity figures (sampleSize on x-axis) ──────────────────
   const standardRows = rows.filter((r) => !r.runType || r.runType === 'k-anonymity');
   metricDefinitions.forEach((m) => {
     makeLineChart({
@@ -381,7 +370,6 @@ const main = () => {
     });
   });
 
-  // ── ℓ-Diversity figures (l on x-axis) ────────────────────────────────────
   const lRows = rows.filter((r) => r.runType === 'l-diversity');
   lDiversityMetricDefs.forEach((m) => {
     makeParamLineChart({
@@ -397,7 +385,6 @@ const main = () => {
     });
   });
 
-  // ── ε-DP figures (epsilon on x-axis, descending = stronger privacy) ───────
   const dpRows = rows.filter((r) => r.runType === 'epsilon-dp');
   dpMetricDefs.forEach((m) => {
     makeParamLineChart({
@@ -413,7 +400,6 @@ const main = () => {
     });
   });
 
-  // ── Markdown tables ───────────────────────────────────────────────────────
   const maxSample    = Math.max(...successful.map((r) => r.sampleSize));
   const summaryRows  = successful.filter((r) => r.sampleSize === maxSample && (!r.runType || r.runType === 'k-anonymity'));
 

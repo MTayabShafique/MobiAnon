@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import useDataSources from "../../hooks/useDataSources";
 import {
   MapContainer, TileLayer, Marker, Polyline, Popup, useMap,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Alert, Badge, Button, Card, Col, Empty, Input, notification, Popover,
-  Row, Select, Skeleton, Space, Spin, Statistic,
+  Alert, Badge, Button, Card, Col, Collapse, Divider, Empty, Input, notification, Popover,
+  Progress, Row, Select, Skeleton, Space, Spin, Statistic,
   Tag, Tooltip, Typography,
 } from "antd";
 import {
   AimOutlined, ApartmentOutlined, AppstoreOutlined, BarChartOutlined, ClusterOutlined,
   CloseOutlined, CompressOutlined, ControlOutlined, DotChartOutlined,
-  EyeInvisibleOutlined, FireOutlined, FundOutlined, LineChartOutlined,
-  NodeIndexOutlined, PlayCircleOutlined, QuestionCircleOutlined, RadarChartOutlined,
-  RocketOutlined, SafetyOutlined, ThunderboltOutlined, UserOutlined,
+  EyeInvisibleOutlined, FireOutlined, FundOutlined, InfoCircleOutlined, LineChartOutlined,
+  NodeIndexOutlined, PieChartOutlined, PlayCircleOutlined, QuestionCircleOutlined,
+  RadarChartOutlined, ReloadOutlined, RocketOutlined, SafetyOutlined, TeamOutlined,
+  ThunderboltOutlined, UserOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import { FilterComponent } from "./FilterComponent";
@@ -38,7 +40,6 @@ const NYC_BOUNDS = [[40.477399, -74.25909], [40.917577, -73.700272]];
 const NYC_CENTER = [40.7128, -74.006];
 const MAP_SETTINGS_KEY = "bicycleAnonymizationMapSettings";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const boundsToFilter = (bounds) => {
   if (!bounds || [bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng].some((v) => typeof v !== "number")) return null;
@@ -65,7 +66,6 @@ const saveMapSettings = (settings) => {
   try { localStorage.setItem(MAP_SETTINGS_KEY, JSON.stringify(settings)); } catch { /* non-fatal */ }
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SyncView({ center, zoom }) {
   const map = useMap();
@@ -114,6 +114,10 @@ const METRIC_HELP = {
     title: "Released Groups",
     content: "How many distinct anonymized clusters were released. Fewer groups means more generalization; the map shows these as centroid markers and heat intensity.",
   },
+  minGroupSize: {
+    title: "Min Group Size",
+    content: "The smallest trip count in any released group. By the k-anonymity guarantee this must always be ≥ k. When ε-DP is active, noisy counts are used — so this value can briefly dip below k on screen even though the true group sizes all satisfy k. It will vary on each fetch because the Laplace mechanism re-samples fresh noise every time.",
+  },
   avgSpatialErrorKm: {
     title: "Mean Spatial Error",
     content: "Average distance in km between each trip's original start point and the centroid of the group it was assigned to. Lower is better — it means the anonymized location is close to the real one.",
@@ -142,7 +146,6 @@ const METRIC_HELP = {
     title: "Backend Total Time",
     content: "Total server-side processing time including the DB query and the anonymization algorithm. This is what the user experiences as API latency. DB + anonymization ≈ total.",
   },
-  // ── ε-DP metrics ──────────────────────────────────────────────────────────
   avgCentroidDisplacementKm: {
     title: "Avg Centroid Displacement",
     content: "Average Euclidean displacement (in km) applied to released centroids by the Laplace mechanism. This is the direct utility cost of ε-DP. Larger displacement = stronger privacy guarantee but more spatial distortion on top of k-anonymity distortion.",
@@ -159,7 +162,6 @@ const METRIC_HELP = {
     title: "Privacy Budget (ε)",
     content: "The ε parameter of (ε, 0)-differential privacy. Smaller ε = stronger privacy guarantee but more noise. ε ≤ 1 is considered strong; ε ≥ 5 is weak. ε = ∞ disables DP entirely. This tool applies DP as a post-processing step on top of k-anonymity.",
   },
-  // ── ℓ-Diversity metrics ───────────────────────────────────────────────────
   lViolations: {
     title: "ℓ-Violations",
     content: "Number of released groups that contain fewer than ℓ distinct values of the sensitive attribute. This must always be 0 — the modified merge-nearest algorithm guarantees it by preferring merges that maximise diversity gain.",
@@ -203,7 +205,6 @@ const MetricSkeleton = () => (
   </Card>
 );
 
-// ── Centroid popup helpers ────────────────────────────────────────────────────
 const ROW_STYLE  = { lineHeight: "1.7", verticalAlign: "top" };
 const LABEL_STYLE = { color: "#888", paddingRight: 10, whiteSpace: "nowrap", fontSize: 12 };
 const VAL_STYLE   = { fontWeight: 600, fontSize: 12 };
@@ -225,7 +226,6 @@ const GroupPopup = ({ stop, filter }) => {
 
   return (
     <div style={{ minWidth: 200 }}>
-      {/* ── Header ── */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
         fontWeight: 700, fontSize: 13,
@@ -240,7 +240,6 @@ const GroupPopup = ({ stop, filter }) => {
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <tbody>
-          {/* ── Trips count — labelled "(noisy)" when DP is on ── */}
           <PopupRow label="Trips">
             {stop.count}
             {dpActive && (
@@ -250,7 +249,6 @@ const GroupPopup = ({ stop, filter }) => {
             )}
           </PopupRow>
 
-          {/* ── Spatial errors ── */}
           <PopupRow label="Mean error">{stop.spatialErrorMeanKm?.toFixed(2)} km</PopupRow>
           <PopupRow label="Max error">
             <span style={{ color: stop.spatialErrorMaxKm > 1 ? "#d46b08" : "inherit" }}>
@@ -258,11 +256,9 @@ const GroupPopup = ({ stop, filter }) => {
             </span>
           </PopupRow>
 
-          {/* ── Structure ── */}
           <PopupRow label="Cells merged">{stop.cellsMerged}</PopupRow>
           <PopupRow label="Time bucket">{stop.temporalBucket || "—"}</PopupRow>
 
-          {/* ── ℓ-Diversity — only when ℓ ≥ 2 ── */}
           {lActive && stop.distinctSensitiveValues !== undefined && (
             <PopupRow label={attrLabel}>
               <span>
@@ -281,7 +277,6 @@ const GroupPopup = ({ stop, filter }) => {
             </PopupRow>
           )}
 
-          {/* ── DP Displacement — only when ε is active ── */}
           {dpActive && stop.dpDisplacementKm !== undefined && (
             <PopupRow label="DP centroid shift">
               <span style={{ color: stop.dpDisplacementKm > 1 ? "#d46b08" : "#389e0d" }}>
@@ -290,7 +285,6 @@ const GroupPopup = ({ stop, filter }) => {
             </PopupRow>
           )}
 
-          {/* ── Position ── */}
           <PopupRow label="Centroid">
             <span style={{ fontWeight: 400, fontSize: 11 }}>
               {stop.position[0].toFixed(5)}, {stop.position[1].toFixed(5)}
@@ -301,9 +295,184 @@ const GroupPopup = ({ stop, filter }) => {
     </div>
   );
 };
-// ─────────────────────────────────────────────────────────────────────────────
 
-const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle }) => {
+
+const RIDEABLE_COLORS = {
+  classic_bike:  "blue",
+  electric_bike: "green",
+  docked_bike:   "orange",
+  unknown:       "default",
+};
+const RIDEABLE_LABELS = {
+  classic_bike:  "Classic",
+  electric_bike: "Electric",
+  docked_bike:   "Docked",
+  unknown:       "Unknown",
+};
+
+/** Derive O(n) baseline stats from the loaded original stops. */
+const computeOriginalBaseline = (stops, gridSize) => {
+  if (!stops || stops.length === 0) return null;
+
+  const total = stops.length;
+  const snap  = (v) => Math.floor(v / gridSize) * gridSize;
+
+  let memberCount = 0;
+  let casualCount = 0;
+  const rideableMap = {};
+  const startCells  = new Set();
+  const pairCounts  = {};
+
+  for (const s of stops) {
+    const mc = s.details?.member_casual;
+    if (mc === "member") memberCount++;
+    else if (mc === "casual") casualCount++;
+
+    const rt = s.details?.rideable_type || "unknown";
+    rideableMap[rt] = (rideableMap[rt] || 0) + 1;
+
+    const sc = `${snap(s.start[0]).toFixed(4)},${snap(s.start[1]).toFixed(4)}`;
+    const ec = `${snap(s.end[0]).toFixed(4)},${snap(s.end[1]).toFixed(4)}`;
+    startCells.add(sc);
+    const pair = `${sc}|${ec}`;
+    pairCounts[pair] = (pairCounts[pair] || 0) + 1;
+  }
+
+  const uniquePairs = Object.values(pairCounts).filter((c) => c === 1).length;
+
+  return {
+    total,
+    memberCount,
+    casualCount,
+    rideableMap,
+    uniqueStartCells:  startCells.size,
+    uniquePairs,
+    reIdentifiablePct: (uniquePairs / total) * 100,
+    avgTripsPerCell:   total / Math.max(startCells.size, 1),
+  };
+};
+
+/** Raw-data baseline panel shown before anonymization results. */
+const OriginalTripsBaseline = ({ baseline, gridSize }) => {
+  if (!baseline) return null;
+
+  const {
+    total, memberCount, rideableMap,
+    uniqueStartCells, uniquePairs,
+    reIdentifiablePct, avgTripsPerCell,
+  } = baseline;
+
+  const memberPct = total > 0 ? (memberCount / total) * 100 : 0;
+  const riskType  = reIdentifiablePct > 50 ? "error"
+                  : reIdentifiablePct > 20 ? "warning"
+                  :                          "success";
+
+  return (
+    <div className="original-baseline-panel">
+      <Divider orientation="left" orientationMargin={0} className="baseline-divider">
+        <Space size={5}>
+          <InfoCircleOutlined />
+          <span>Raw Data Baseline</span>
+          <HelpPopover
+            title="Raw Data Baseline"
+            content={
+              <span>
+                Summary of the loaded original trips — used as the ground truth against which
+                anonymization quality is measured. The <strong>re-identification risk</strong>{" "}
+                row shows how many trips have a unique start→end zone pair: an adversary with
+                background knowledge can re-identify these individuals. k&#8209;Anonymity
+                eliminates this by guaranteeing groups of ≥&nbsp;k trips per zone.
+              </span>
+            }
+          />
+        </Space>
+      </Divider>
+
+      <Row gutter={[8, 8]} align="stretch">
+        <Col xs={8} style={{ display: 'flex' }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Trips loaded</span>
+            <span className="baseline-value">{total.toLocaleString()}</span>
+          </div>
+        </Col>
+        <Col xs={8} style={{ display: 'flex' }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Unique start zones</span>
+            <span className="baseline-value">{uniqueStartCells.toLocaleString()}</span>
+            <span className="baseline-sub">grid&nbsp;{gridSize}°</span>
+          </div>
+        </Col>
+        <Col xs={8} style={{ display: 'flex' }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Avg trips&nbsp;/&nbsp;zone</span>
+            <span className="baseline-value">{avgTripsPerCell.toFixed(1)}</span>
+          </div>
+        </Col>
+
+        <Col xs={24}>
+          <div className="baseline-row">
+            <div className="baseline-row-header">
+              <Space size={4}>
+                <TeamOutlined className="baseline-row-icon" />
+                <span className="baseline-label">Rider type split</span>
+              </Space>
+              <Space size={10}>
+                <span className="baseline-tag-member">Member&nbsp;{memberPct.toFixed(1)}%</span>
+                <span className="baseline-tag-casual">Casual&nbsp;{(100 - memberPct).toFixed(1)}%</span>
+              </Space>
+            </div>
+            <Progress
+              percent={parseFloat(memberPct.toFixed(1))}
+              showInfo={false}
+              size="small"
+              strokeColor="#2563eb"
+              trailColor="#fa8c16"
+              style={{ marginTop: 4, marginBottom: 0 }}
+            />
+          </div>
+        </Col>
+
+        <Col xs={24}>
+          <div className="baseline-row">
+            <Space size={4} style={{ marginBottom: 6 }}>
+              <PieChartOutlined className="baseline-row-icon" />
+              <span className="baseline-label">Bike type</span>
+            </Space>
+            <Space size={6} wrap>
+              {Object.entries(rideableMap)
+                .sort(([, a], [, b]) => b - a)
+                .map(([type, count]) => (
+                  <Tag key={type} color={RIDEABLE_COLORS[type] || "default"} className="baseline-type-tag">
+                    {RIDEABLE_LABELS[type] || type}&nbsp;—&nbsp;{((count / total) * 100).toFixed(1)}%
+                  </Tag>
+                ))}
+            </Space>
+          </div>
+        </Col>
+
+        <Col xs={24}>
+          <Alert
+            type={riskType}
+            showIcon
+            className="baseline-risk-alert"
+            message={
+              <span>
+                <strong>
+                  {uniquePairs.toLocaleString()} trips ({reIdentifiablePct.toFixed(1)}%)
+                </strong>{" "}
+                have a unique start→end zone pair and could be re-identified by an adversary
+                with background knowledge. k&#8209;Anonymity merges these into groups
+                of&nbsp;≥&nbsp;k&nbsp;trips, reducing this risk to&nbsp;0.
+              </span>
+            }
+          />
+        </Col>
+      </Row>
+    </div>
+  );
+};
+
+const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle, footerContent }) => {
   const mapRef = React.useRef();
 
   useEffect(() => {
@@ -344,6 +513,7 @@ const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle }) =>
           />
           : (
             <MapContainer
+
               ref={mapRef}
               center={[mapKey.filter.centerLat, mapKey.filter.centerLng]}
               zoom={12}
@@ -390,6 +560,7 @@ const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle }) =>
           )
         }
       </Spin>
+      {footerContent}
     </Card>
   );
 };
@@ -426,7 +597,6 @@ const MiniAnonymizedMap = ({ result, center, gridSize, filter }) => {
   );
 };
 
-// ─── Data fetchers ────────────────────────────────────────────────────────────
 
 const fetchStopsData = async (filter, setMapState, mapType) => {
   setMapState((prev) => ({ ...prev, loading: true }));
@@ -549,7 +719,6 @@ const fetchKComparisonData = async (filter, gridSize, kValues, setComparisonStat
   }
 };
 
-// ─── Main component ───────────────────────────────────────────────────────────
 
 const TEMPORAL_LABELS = {
   none:   "Spatial only",
@@ -564,10 +733,7 @@ const SENSITIVE_ATTR_LABELS = {
   destination_area: "Destination area",
 };
 
-// Maximum achievable ℓ per sensitive attribute.
-// member_casual has exactly 2 distinct values (member / casual).
-// rideable_type has up to 3 (classic_bike / electric_bike / docked_bike).
-// destination_area has many distinct grid-cell values — capped at 5 for the UI.
+// UI caps for feasible ℓ values by sensitive attribute.
 const MAX_L_FOR_ATTR = {
   member_casual:    2,
   rideable_type:    3,
@@ -583,17 +749,17 @@ const MapCompare = () => {
   const [gridSize,        setGridSize]        = useState(savedSettings?.gridSize || 0.01);
   const [show3D,          setShow3D]          = useState(false);
   const [showKComparison, setShowKComparison] = useState(false);
-  const [dataSourceInfo,  setDataSourceInfo]  = useState(null);
-  const comparisonRef = React.useRef(null);
+  const [showComparisonInfo, setShowComparisonInfo] = useState(true);
+  const { dataSourceInfo } = useDataSources();
+  const comparisonRef  = React.useRef(null);
+  const [pendingRun,   setPendingRun]   = useState(false); // pulses the Run button after a 3D bar click
 
-  // k values the user wants in the comparison panel (max 4)
   const initK = savedSettings?.anonymizedFilter?.k ?? 5;
   const [selectedKValues, setSelectedKValues] = useState(
     () => [...new Set([initK, 5, 10, 20])].sort((a, b) => a - b).slice(0, 4)
   );
 
-  // If a previous session saved "member" as the memberType, discard it so
-  // ℓ-diversity works out of the box (member_casual needs both rider types present).
+  // Reset old member-only filters because rider-type diversity needs both groups.
   if (savedSettings?.originalFilter?.memberType === "member" ||
       savedSettings?.anonymizedFilter?.memberType === "member") {
     try { localStorage.removeItem(MAP_SETTINGS_KEY); } catch { /* non-fatal */ }
@@ -625,15 +791,16 @@ const MapCompare = () => {
     },
   });
   const [kComparison, setKComparison] = useState({ loading: false, results: [], fetchedWith: null });
+  const lastFetchedAnonConfig = React.useRef(null);
 
-  // Load data-source metadata (bounds + counts + date ranges)
-  useEffect(() => {
-    axios.get(`${API}/api/upload/data-sources`)
-      .then(({ data }) => setDataSourceInfo(data.data))
-      .catch(() => {/* non-fatal */});
-  }, []);
+  // Pre-compute baseline stats from original stops whenever they change.
+  const originalBaseline = React.useMemo(
+    () => computeOriginalBaseline(mapStateOriginal.stops, gridSize),
+    [mapStateOriginal.stops, gridSize],
+  );
 
-  // Re-center maps when the data source changes
+  // dataSourceInfo is now provided by useDataSources() above — no separate fetch needed.
+
   useEffect(() => {
     const source = mapStateOriginal.filter.dataSource || "preloaded";
     const nextBounds = boundsToFilter(dataSourceInfo?.bounds?.[source]);
@@ -643,7 +810,6 @@ const MapCompare = () => {
     setMapStateAnonymized(applyBounds);
   }, [dataSourceInfo, mapStateOriginal.filter.dataSource]);
 
-  // Persist settings
   useEffect(() => {
     saveMapSettings({
       gridSize,
@@ -652,7 +818,6 @@ const MapCompare = () => {
     });
   }, [gridSize, mapStateOriginal.filter, mapStateAnonymized.filter]);
 
-  // Scroll to comparison section whenever it is revealed
   useEffect(() => {
     if (showKComparison && comparisonRef.current) {
       setTimeout(() => {
@@ -671,7 +836,6 @@ const MapCompare = () => {
     setMapStateAnonymized((p) => ({ ...p, filter: { ...p.filter, ...update } }));
   }, []);
 
-  // 3D landscape click → apply k + temporal to the anonymized filter
   const handle3DSelect = useCallback(({ k, temporalGranularity, l, sensitiveAttr, epsilon }) => {
     setMapStateAnonymized((p) => ({
       ...p,
@@ -693,13 +857,32 @@ const MapCompare = () => {
     ].filter(Boolean);
     notification.info({
       message: `Configuration applied: ${parts.join(", ")}`,
-      description: "Click Run Anonymization to see the result on the map.",
-      duration: 4,
+      description: 'Press the pulsing "Run Anonymization" button above to render the result on the map.',
+      duration: 5,
     });
+    // Pulse the Run Anonymization button so the user immediately knows what to click.
+    setPendingRun(true);
   }, []);
 
-  // Comparison panel is "dirty" when the user has changed k values, gridSize, or temporal
-  // since the last fetch — flags the Update button as primary
+  // Detect when anonymization settings have changed since the last "Run Anonymization" fetch.
+  const anonCfg = lastFetchedAnonConfig.current;
+  const anonKChanged        = !!(anonCfg && mapStateAnonymized.filter.k !== anonCfg.k);
+  const isAnonSettingsDirty = !!(anonCfg && (
+    anonKChanged ||
+    gridSize                                            !== anonCfg.gridSize ||
+    mapStateAnonymized.filter.temporalGranularity       !== anonCfg.temporalGranularity ||
+    (mapStateAnonymized.filter.l ?? 1)                  !== anonCfg.l ||
+    (mapStateAnonymized.filter.sensitiveAttr ?? "none") !== anonCfg.sensitiveAttr ||
+    (mapStateAnonymized.filter.epsilon ?? null)         !== anonCfg.epsilon
+  ));
+  const runBtnLabel = anonKChanged
+    ? `Apply k = ${mapStateAnonymized.filter.k}`
+    : isAnonSettingsDirty
+      ? "Re-run with New Settings"
+      : "Run Anonymization";
+  const runBtnIcon  = isAnonSettingsDirty ? <ReloadOutlined /> : <ClusterOutlined />;
+
+  // Highlight the comparison update button when it no longer matches the current settings.
   const isDirty = !!(kComparison.fetchedWith && (
     JSON.stringify([...selectedKValues].sort((a, b) => a - b)) !==
       JSON.stringify([...kComparison.fetchedWith.kValues].sort((a, b) => a - b)) ||
@@ -716,25 +899,23 @@ const MapCompare = () => {
   return (
     <div className="map-compare-page">
 
-      {/* ── Hero ── */}
       <section className="tool-hero">
         <div className="tool-hero-body">
           <Space size={8} className="hero-kicker">
             <RocketOutlined />
-            <span>Interactive privacy-utility demonstrator</span>
+            <span>Interactive Mobility Data Privacy Demonstrator</span>
           </Space>
-          <Title level={2} style={{ margin: "8px 0 6px" }}>Data Anonymization and Utility</Title>
+          <Title level={2} style={{ margin: "8px 0 6px" }}>Explainable Anonymization of Mobility Data</Title>
           <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.6 }}>
-            Compare raw mobility trips with k-anonymized spatial-temporal groups, inspect
-            utility loss metrics, and explore the privacy-utility tradeoff in 3D.
+            Apply and compare k-Anonymity, ℓ-Diversity, and Differential Privacy to real
+            mobility trip data. Inspect utility-loss metrics side-by-side and explore the
+            privacy–utility tradeoff in 3D.
           </Text>
         </div>
       </section>
 
-      {/* ── Controls ── */}
       <Card className="controls-panel" styles={{ body: { padding: "20px 24px 16px" } }}>
 
-        {/* ── Section 1: Data Filters ── */}
         <div className="controls-section-label">
           <ControlOutlined className="controls-section-icon" />
           <span>Data Filters</span>
@@ -746,10 +927,8 @@ const MapCompare = () => {
           dataSourceInfo={dataSourceInfo}
         />
 
-        {/* ── Divider ── */}
         <div className="controls-divider" />
 
-        {/* ── Section 2: Anonymization Settings ── */}
         <div className="controls-section-label">
           <ClusterOutlined className="controls-section-icon" />
           <span>Anonymization Settings</span>
@@ -787,7 +966,10 @@ const MapCompare = () => {
             <Select
               value={mapStateAnonymized.filter.k}
               style={{ width: "100%" }}
-              onChange={(v) => setMapStateAnonymized((p) => ({ ...p, filter: { ...p.filter, k: v } }))}
+              onChange={(v) => {
+                setMapStateAnonymized((p) => ({ ...p, filter: { ...p.filter, k: v } }));
+                setPendingRun(true);
+              }}
             >
               {Array.from({ length: 16 }, (_, i) => i + 5).map((n) => (
                 <Select.Option key={n} value={n}>k = {n}</Select.Option>
@@ -819,7 +1001,6 @@ const MapCompare = () => {
             />
           </Col>
 
-          {/* ── ℓ-Diversity ── */}
           <Col xs={24} sm={12} md={8} lg={6}>
             <label className="control-label">
               <SafetyOutlined className="control-label-icon" />
@@ -852,7 +1033,6 @@ const MapCompare = () => {
             />
           </Col>
 
-          {/* ── ε-Differential Privacy ── */}
           <Col xs={24} sm={12} md={8} lg={6}>
             <label className="control-label">
               <NodeIndexOutlined className="control-label-icon" />
@@ -909,7 +1089,6 @@ const MapCompare = () => {
           </Col>
         </Row>
 
-        {/* ── ℓ-Diversity compatibility warnings ── */}
         {mapStateAnonymized.filter.l >= 2 &&
           mapStateAnonymized.filter.sensitiveAttr === "member_casual" &&
           mapStateAnonymized.filter.memberType !== "all" && (
@@ -958,7 +1137,6 @@ const MapCompare = () => {
           />
         )}
 
-        {/* ── Action buttons ── */}
         <div className="action-row">
           <Space wrap>
             <Button
@@ -969,32 +1147,43 @@ const MapCompare = () => {
             >
               Load Original
             </Button>
-            <Button
-              type="primary"
-              icon={<ClusterOutlined />}
-              onClick={() => fetchStopsData(
-                {
-                  ...mapStateAnonymized.filter,
-                  gridSize,
-                  l:            mapStateAnonymized.filter.l ?? 1,
-                  sensitiveAttr: mapStateAnonymized.filter.sensitiveAttr ?? "none",
-                  ...(mapStateAnonymized.filter.epsilon != null && { epsilon: mapStateAnonymized.filter.epsilon }),
-                },
-                setMapStateAnonymized,
-                "anonymized"
-              )}
-              loading={mapStateAnonymized.loading}
-            >
-              Run Anonymization
-            </Button>
+            <div className={pendingRun || isAnonSettingsDirty ? "run-btn-pulse" : undefined}>
+              <Button
+                type="primary"
+                icon={runBtnIcon}
+                onClick={() => {
+                  setPendingRun(false);
+                  lastFetchedAnonConfig.current = {
+                    k:                 mapStateAnonymized.filter.k,
+                    l:                 mapStateAnonymized.filter.l ?? 1,
+                    sensitiveAttr:     mapStateAnonymized.filter.sensitiveAttr ?? "none",
+                    epsilon:           mapStateAnonymized.filter.epsilon ?? null,
+                    gridSize,
+                    temporalGranularity: mapStateAnonymized.filter.temporalGranularity,
+                  };
+                  fetchStopsData(
+                    {
+                      ...mapStateAnonymized.filter,
+                      gridSize,
+                      l:            mapStateAnonymized.filter.l ?? 1,
+                      sensitiveAttr: mapStateAnonymized.filter.sensitiveAttr ?? "none",
+                      ...(mapStateAnonymized.filter.epsilon != null && { epsilon: mapStateAnonymized.filter.epsilon }),
+                    },
+                    setMapStateAnonymized,
+                    "anonymized"
+                  );
+                }}
+                loading={mapStateAnonymized.loading}
+              >
+                {runBtnLabel}
+              </Button>
+            </div>
           </Space>
           <Space wrap className="action-row-right">
 
-            {/* ── Compare k Values — 3-state smart toggle ── */}
             {(() => {
               const hasResults = kComparison.results.length > 0;
 
-              // State 2: results visible → offer to hide
               if (hasResults && showKComparison) {
                 return (
                   <Button
@@ -1007,13 +1196,12 @@ const MapCompare = () => {
                 );
               }
 
-              // State 3: results exist but hidden → green dot badge to catch attention
               if (hasResults && !showKComparison) {
                 return (
                   <Badge dot color="#16a34a" offset={[-4, 4]}>
                     <Button
                       icon={<BarChartOutlined />}
-                      onClick={() => setShowKComparison(true)}
+                      onClick={() => { setShowKComparison(true); setShowComparisonInfo(true); setShow3D(false); }}
                     >
                       Show Comparison
                     </Button>
@@ -1021,15 +1209,16 @@ const MapCompare = () => {
                 );
               }
 
-              // State 1: no results yet → fetch + auto-reveal
               return (
-                <Tooltip title={`Runs k=${selectedKValues.join(", ")} side-by-side on the same filters so you can compare privacy guarantees and utility loss without switching back and forth. Adjust k values in the comparison panel header after the first fetch.`}>
+                <Tooltip title={`Compare up to 4 k values side-by-side on the same filters. Currently selected: k=${selectedKValues.join(", ")}. You can add or remove k values inside the panel after the first fetch.`}>
                   <Button
                     icon={<BarChartOutlined />}
                     loading={kComparison.loading}
                     onClick={async () => {
                       await fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison);
                       setShowKComparison(true);
+                      setShowComparisonInfo(true);
+                      setShow3D(false);
                     }}
                   >
                     {kComparison.loading
@@ -1043,7 +1232,12 @@ const MapCompare = () => {
             <Tooltip title="Open the 3D Privacy-Utility Landscape — an interactive surface showing how suppression and utility change across all k values and temporal modes. Click any bar to apply that configuration.">
               <Button
                 icon={<LineChartOutlined />}
-                onClick={() => setShow3D((v) => !v)}
+                onClick={() => {
+                  setShow3D((v) => {
+                    if (!v) setShowKComparison(false); // hide comparison when opening 3D
+                    return !v;
+                  });
+                }}
                 type={show3D ? "primary" : "default"}
               >
                 {show3D ? "Hide 3D Landscape" : "3D Landscape"}
@@ -1053,7 +1247,6 @@ const MapCompare = () => {
         </div>
       </Card>
 
-      {/* ── 3D Privacy-Utility Landscape ── */}
       {show3D && (
         <Card
           className="viz3d-card"
@@ -1081,153 +1274,162 @@ const MapCompare = () => {
         </Card>
       )}
 
-      {/* ── Metric cards ── */}
       {(metrics || isMetricLoading) && (
-        <Row gutter={[12, 12]} className="metric-grid">
-          {isMetricLoading ? (
-            [0,1,2,3,4,5,6,7].map((i) => (
+        isMetricLoading ? (
+          <Row gutter={[12, 12]} className="metric-grid">
+            {[0,1,2,3,4,5,6,7].map((i) => (
               <Col key={i} xs={24} sm={12} xl={6}><MetricSkeleton /></Col>
-            ))
-          ) : (
-            <>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<EyeInvisibleOutlined />} label="k Violations" metricKey="kViolations" value={metrics.kViolations} tone="good" />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<ClusterOutlined />} label="Released Groups" metricKey="outputGroups" value={metrics.outputGroups} />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<CompressOutlined />} label="Mean Error" metricKey="avgSpatialErrorKm" value={formatNumber(metrics.avgSpatialErrorKm)} suffix="km" tone="warn" />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<FireOutlined />} label="Hotspot Overlap" metricKey="top10HotspotOverlap" value={formatPercent(metrics.top10HotspotOverlap)} tone="good" />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<DotChartOutlined />} label="Suppressed" metricKey="suppressedRecords" value={metrics.suppressedRecords} />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<RadarChartOutlined />} label="Density (Cosine)" metricKey="densityCosineSimilarity" value={formatPercent(metrics.densityCosineSimilarity)} tone="good" />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<FundOutlined />} label="DB Query" metricKey="dbQueryMs" value={formatNumber(metrics.dbQueryMs)} suffix="ms" />
-              </Col>
-              <Col xs={24} sm={12} xl={6}>
-                <MetricCard icon={<ThunderboltOutlined />} label="Backend Total" metricKey="totalBackendMs" value={formatNumber(metrics.totalBackendMs)} suffix="ms" />
-              </Col>
-
-              {/* ── ε-DP metrics — only rendered when DP is active ── */}
-              {metrics.dpEnabled && (
-                <>
-                  <Col xs={24}>
-                    <div className="metric-section-divider">
-                      <NodeIndexOutlined />
-                      <span>ε-Differential Privacy</span>
-                      <Tag color="volcano">ε = {metrics.epsilon}</Tag>
-                    </div>
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<NodeIndexOutlined />}
-                      label="Avg Centroid Displacement"
-                      metricKey="avgCentroidDisplacementKm"
-                      value={formatNumber(metrics.avgCentroidDisplacementKm)}
-                      suffix="km"
-                      tone="warn"
+            ))}
+          </Row>
+        ) : (
+          <Collapse
+            size="small"
+            className="metric-collapse"
+            defaultActiveKey={['k-anon']}
+            items={[
+              {
+                key: 'k-anon',
+                label: (
+                  <Space wrap size={6}>
+                    <EyeInvisibleOutlined />
+                    <strong>k-Anonymity Results</strong>
+                    <Tag color="blue" style={{ margin: 0 }}>k = {metrics.k}</Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {metrics.outputGroups} groups · {metrics.suppressedRecords} suppressed ·{" "}
+                      {formatPercent(metrics.densityCosineSimilarity)} cosine ·{" "}
+                      {formatNumber(metrics.avgSpatialErrorKm)} km error
+                    </Text>
+                  </Space>
+                ),
+                children: (
+                  <Row gutter={[12, 12]} className="metric-grid">
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<EyeInvisibleOutlined />} label="k Violations" metricKey="kViolations" value={metrics.kViolations} tone={metrics.kViolations === 0 ? "good" : "bad"} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<ClusterOutlined />} label="Released Groups" metricKey="outputGroups" value={metrics.outputGroups} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<TeamOutlined />} label="Min Group Size" metricKey="minGroupSize" value={metrics.minGroupSize} tone={metrics.minGroupSize >= metrics.k ? "good" : "bad"} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<DotChartOutlined />} label="Suppressed" metricKey="suppressedRecords" value={metrics.suppressedRecords} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<CompressOutlined />} label="Mean Error" metricKey="avgSpatialErrorKm" value={formatNumber(metrics.avgSpatialErrorKm)} suffix="km" tone="warn" />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<FireOutlined />} label="Hotspot Overlap" metricKey="top10HotspotOverlap" value={formatPercent(metrics.top10HotspotOverlap)} tone="good" />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<RadarChartOutlined />} label="Density (Cosine)" metricKey="densityCosineSimilarity" value={formatPercent(metrics.densityCosineSimilarity)} tone="good" />
+                    </Col>
+                  </Row>
+                ),
+              },
+              {
+                key: 'performance',
+                label: (
+                  <Space wrap size={6}>
+                    <ThunderboltOutlined />
+                    <strong>Performance</strong>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      DB {formatNumber(metrics.dbQueryMs)} ms · Total {formatNumber(metrics.totalBackendMs)} ms
+                    </Text>
+                  </Space>
+                ),
+                children: (
+                  <Row gutter={[12, 12]} className="metric-grid">
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<FundOutlined />} label="DB Query" metricKey="dbQueryMs" value={formatNumber(metrics.dbQueryMs)} suffix="ms" />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<ThunderboltOutlined />} label="Backend Total" metricKey="totalBackendMs" value={formatNumber(metrics.totalBackendMs)} suffix="ms" />
+                    </Col>
+                  </Row>
+                ),
+              },
+              ...(metrics.dpEnabled ? [{
+                key: 'dp',
+                label: (
+                  <Space wrap size={6}>
+                    <NodeIndexOutlined />
+                    <strong>ε-Differential Privacy</strong>
+                    <Tag color="volcano" style={{ margin: 0 }}>ε = {metrics.epsilon}</Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {formatNumber(metrics.avgCentroidDisplacementKm)} km avg displacement · noise λ = {formatNumber(metrics.dpLocationScaleKm)} km
+                    </Text>
+                  </Space>
+                ),
+                children: (
+                  <>
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 12 }}
+                      message={
+                        <span>
+                          <strong>Metrics vary on each fetch</strong> — Mean Error, Cosine Similarity, Hotspot Overlap, and Min Group Size all shift because the Laplace mechanism draws fresh random noise every time.
+                          This is expected behavior of ε-DP, not a bug. Disable ε-DP (set ε to Off) to get fully deterministic results.
+                        </span>
+                      }
                     />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<CompressOutlined />}
-                      label="Location Noise Scale"
-                      metricKey="dpLocationScaleKm"
-                      value={formatNumber(metrics.dpLocationScaleKm)}
-                      suffix="km"
-                      tone="neutral"
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<DotChartOutlined />}
-                      label="Count Noise Scale (λ)"
-                      metricKey="dpCountScale"
-                      value={formatNumber(metrics.dpCountScale, 3)}
-                      suffix="trips"
-                      tone="neutral"
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<EyeInvisibleOutlined />}
-                      label="Privacy Budget (ε)"
-                      metricKey="dpEpsilon"
-                      value={metrics.epsilon}
-                      tone={metrics.epsilon <= 1 ? "good" : metrics.epsilon <= 5 ? "warn" : "neutral"}
-                    />
-                  </Col>
-                </>
-              )}
-
-              {/* ── ℓ-Diversity metrics — only rendered when ℓ ≥ 2 ── */}
-              {metrics.lViolations !== undefined && (
-                <>
-                  <Col xs={24}>
-                    <div className="metric-section-divider">
-                      <SafetyOutlined />
-                      <span>ℓ-Diversity Results</span>
-                      <Tag color="purple">
-                        ℓ = {metrics.l} · {SENSITIVE_ATTR_LABELS[metrics.sensitiveAttr] ?? metrics.sensitiveAttr}
-                      </Tag>
-                    </div>
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<SafetyOutlined />}
-                      label="ℓ Violations"
-                      metricKey="lViolations"
-                      value={metrics.lViolations}
-                      tone={metrics.lViolations === 0 ? "good" : "bad"}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<ApartmentOutlined />}
-                      label="Min Distinct Values"
-                      metricKey="minDistinctSensitiveValues"
-                      value={metrics.minDistinctSensitiveValues}
-                      tone={metrics.minDistinctSensitiveValues >= metrics.l ? "good" : "bad"}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<UserOutlined />}
-                      label="Avg Distinct Values"
-                      metricKey="avgDistinctSensitiveValues"
-                      value={formatNumber(metrics.avgDistinctSensitiveValues)}
-                      tone="neutral"
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} xl={6}>
-                    <MetricCard
-                      icon={<ApartmentOutlined />}
-                      label="Max Distinct Values"
-                      metricKey="maxDistinctSensitiveValues"
-                      value={metrics.maxDistinctSensitiveValues}
-                      tone="neutral"
-                    />
-                  </Col>
-                </>
-              )}
-            </>
-          )}
-        </Row>
+                    <Row gutter={[12, 12]} className="metric-grid">
+                      <Col xs={24} sm={12} xl={6}>
+                        <MetricCard icon={<NodeIndexOutlined />} label="Avg Centroid Displacement" metricKey="avgCentroidDisplacementKm" value={formatNumber(metrics.avgCentroidDisplacementKm)} suffix="km" tone="warn" />
+                      </Col>
+                      <Col xs={24} sm={12} xl={6}>
+                        <MetricCard icon={<CompressOutlined />} label="Location Noise Scale" metricKey="dpLocationScaleKm" value={formatNumber(metrics.dpLocationScaleKm)} suffix="km" tone="neutral" />
+                      </Col>
+                      <Col xs={24} sm={12} xl={6}>
+                        <MetricCard icon={<DotChartOutlined />} label="Count Noise Scale (λ)" metricKey="dpCountScale" value={formatNumber(metrics.dpCountScale, 3)} suffix="trips" tone="neutral" />
+                      </Col>
+                      <Col xs={24} sm={12} xl={6}>
+                        <MetricCard icon={<EyeInvisibleOutlined />} label="Privacy Budget (ε)" metricKey="dpEpsilon" value={metrics.epsilon} tone={metrics.epsilon <= 1 ? "good" : metrics.epsilon <= 5 ? "warn" : "neutral"} />
+                      </Col>
+                    </Row>
+                  </>
+                ),
+              }] : []),
+              ...(metrics.lViolations !== undefined ? [{
+                key: 'ldiversity',
+                label: (
+                  <Space wrap size={6}>
+                    <SafetyOutlined />
+                    <strong>ℓ-Diversity Results</strong>
+                    <Tag color="purple" style={{ margin: 0 }}>
+                      ℓ = {metrics.l} · {SENSITIVE_ATTR_LABELS[metrics.sensitiveAttr] ?? metrics.sensitiveAttr}
+                    </Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {metrics.lViolations === 0 ? "✓ No violations" : `${metrics.lViolations} violations`} · min {metrics.minDistinctSensitiveValues} distinct values
+                    </Text>
+                  </Space>
+                ),
+                children: (
+                  <Row gutter={[12, 12]} className="metric-grid">
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<SafetyOutlined />} label="ℓ Violations" metricKey="lViolations" value={metrics.lViolations} tone={metrics.lViolations === 0 ? "good" : "bad"} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<ApartmentOutlined />} label="Min Distinct Values" metricKey="minDistinctSensitiveValues" value={metrics.minDistinctSensitiveValues} tone={metrics.minDistinctSensitiveValues >= metrics.l ? "good" : "bad"} />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<UserOutlined />} label="Avg Distinct Values" metricKey="avgDistinctSensitiveValues" value={formatNumber(metrics.avgDistinctSensitiveValues)} tone="neutral" />
+                    </Col>
+                    <Col xs={24} sm={12} xl={6}>
+                      <MetricCard icon={<ApartmentOutlined />} label="Max Distinct Values" metricKey="maxDistinctSensitiveValues" value={metrics.maxDistinctSensitiveValues} tone="neutral" />
+                    </Col>
+                  </Row>
+                ),
+              }] : []),
+            ]}
+          />
+        )
       )}
 
-      {/* ── Multi-k comparison — shown only when user has revealed it ── */}
       {kComparison.results.length > 0 && showKComparison && (
         <div ref={comparisonRef} className="comparison-section">
-          {/* ── Comparison header ── */}
           <div className="section-title comparison-section-header">
-            {/* Left: title + help */}
             <Space wrap>
               <BarChartOutlined />
               <Title level={4} style={{ margin: 0 }}>Multi-k Comparison</Title>
@@ -1237,9 +1439,7 @@ const MapCompare = () => {
               />
             </Space>
 
-            {/* Right: controls */}
             <Space wrap className="comparison-controls">
-              {/* k-value multi-select */}
               <Select
                 mode="multiple"
                 value={selectedKValues}
@@ -1263,7 +1463,6 @@ const MapCompare = () => {
                 }))}
               />
 
-              {/* Read-only setting tags */}
               <Tooltip title="Grid size from Anonymization Settings">
                 <Tag icon={<AppstoreOutlined />} color="geekblue" style={{ cursor: "default" }}>
                   Grid {gridSize}
@@ -1275,7 +1474,6 @@ const MapCompare = () => {
                 </Tag>
               </Tooltip>
 
-              {/* Update / Re-fetch button */}
               <Tooltip title={isDirty ? "Settings changed since last fetch — click to update the comparison" : "Re-fetch all k values with the current filters"}>
                 <Button
                   type={isDirty ? "primary" : "default"}
@@ -1295,7 +1493,36 @@ const MapCompare = () => {
             </Space>
           </div>
 
-          {/* ── Hint: current k not in comparison ── */}
+          {showComparisonInfo && (
+            <Alert
+              type="info"
+              showIcon
+              closable
+              onClose={() => setShowComparisonInfo(false)}
+              className="comparison-hint-alert"
+              style={{ marginBottom: 8 }}
+              message={<strong>How Multi-k Comparison works</strong>}
+              description={
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
+                  <li>Select <strong>up to 4 k values</strong> using the dropdown — the panel compares them side-by-side with identical filters.</li>
+                  <li><strong>Higher k</strong> = stronger privacy guarantee but more records suppressed and larger spatial error.</li>
+                  <li>After changing anonymization settings (ℓ-diversity, ε-DP, grid size, temporal), click <strong>Update Comparison</strong> to re-run with the new configuration.</li>
+                </ul>
+              }
+            />
+          )}
+
+          {isDirty && (
+            <Alert
+              type="warning"
+              showIcon
+              className="comparison-hint-alert comparison-dirty-alert"
+              style={{ marginBottom: 8 }}
+              message={<strong>Anonymization settings have changed</strong>}
+              description="The comparison below was fetched with different settings. Use the Update Comparison button above to reflect your current configuration."
+            />
+          )}
+
           {!selectedKValues.includes(mapStateAnonymized.filter.k) && (
             <Alert
               type="info"
@@ -1324,7 +1551,6 @@ const MapCompare = () => {
             />
           )}
 
-          {/* ── Comparison cards ── */}
           <Spin spinning={kComparison.loading}>
             <Row gutter={[16, 16]} className="comparison-grid">
               {kComparison.results.map((result) => (
@@ -1366,7 +1592,16 @@ const MapCompare = () => {
                     {result.metrics && (
                       <div className="comparison-metrics">
                         <span>Groups <strong>{result.metrics.outputGroups}</strong></span>
-                        <span>Min group <strong>{result.metrics.minGroupSize}</strong></span>
+                        <Tooltip
+                          title={METRIC_HELP.minGroupSize.content}
+                          placement="top"
+                          overlayInnerStyle={{ background: "#fff", color: "#000" }}
+                          color="#fff"
+                        >
+                          <span className="comparison-metric-info" style={{ cursor: "help", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            Min group <InfoCircleOutlined style={{ fontSize: 11, color: "#722ed1", flexShrink: 0 }} /> <strong>{result.metrics.minGroupSize}</strong>
+                          </span>
+                        </Tooltip>
                         <span>Suppressed <strong>{result.metrics.suppressedRecords}</strong></span>
                         <span>Error <strong>{formatNumber(result.metrics.avgSpatialErrorKm)} km</strong></span>
                         <span>Cosine <strong>{formatPercent(result.metrics.densityCosineSimilarity)}</strong></span>
@@ -1383,7 +1618,6 @@ const MapCompare = () => {
         </div>
       )}
 
-      {/* ── Map panels ── */}
       <div className="map-grid">
         <MapComponent
           mapKey={mapStateOriginal}
@@ -1392,6 +1626,11 @@ const MapCompare = () => {
           gridSize={gridSize}
           title="Original Trips"
           subtitle="Raw trip start and end points inside the current map bounds."
+          footerContent={
+            originalBaseline
+              ? <OriginalTripsBaseline baseline={originalBaseline} gridSize={gridSize} />
+              : null
+          }
         />
         <MapComponent
           mapKey={mapStateAnonymized}

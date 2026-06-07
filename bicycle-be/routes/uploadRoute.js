@@ -3,19 +3,315 @@ import multer from 'multer';
 import csvParser from 'csv-parser';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { createHash } from 'crypto';
 import { pool } from '../db/dbConfig.js';
 
 const router = express.Router();
 
-// Ensure uploads directory exists
+// Keep sessions in RAM and on disk so interrupted uploads can resume after a restart.
+
+const SESSION_DIR = path.join(process.cwd(), 'uploads', 'sessions');
+if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
+
+// Track delete jobs so the UI can resume or poll after a restart.
+
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS delete_jobs (
+        id      INT PRIMARY KEY DEFAULT 1,
+        status  ENUM('running','interrupted','done') NOT NULL DEFAULT 'running',
+        total   INT NOT NULL DEFAULT 0,
+        deleted INT NOT NULL DEFAULT 0,
+        started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    // Any job that was 'running' when the server died is now interrupted.
+    await pool.query("UPDATE delete_jobs SET status = 'interrupted' WHERE status = 'running'");
+  } catch (err) {
+    console.error('delete_jobs init error:', err.message);
+  }
+})();
+
+const uploadSessions = new Map();
+
+const sessionFilePath = (id) => path.join(SESSION_DIR, `session-${id}.json`);
+
+// Write session state before replying so retried chunks do not get double-counted.
+const persistSession = (session) => {
+  const payload = JSON.stringify({
+    ...session,
+    // Sets aren't JSON-serialisable — store as a plain array on disk.
+    completedChunks: [...session.completedChunks],
+    // columnMap is re-detected from chunk headers on resume, skip persisting it.
+    columnMap: null,
+  });
+  return fs.promises.writeFile(sessionFilePath(session.sessionId), payload).catch((err) => {
+    // Non-fatal: the upload can continue, but the crash window is slightly wider.
+    console.error(`Session persist failed [${session.sessionId}]:`, err.message);
+  });
+};
+
+// Remove the session file once it's no longer needed.
+const deleteSessionFile = (sessionId) => {
+  fs.unlink(sessionFilePath(sessionId), (err) => {
+    if (err && err.code !== 'ENOENT')
+      console.error(`Session file delete failed [${sessionId}]:`, err.message);
+  });
+};
+
+// Restore recent sessions from disk on startup.
+const loadSessionsFromDisk = () => {
+  let files;
+  try {
+    files = fs.readdirSync(SESSION_DIR).filter(
+      (f) => f.startsWith('session-') && f.endsWith('.json')
+    );
+  } catch { return; }
+
+  const staleAfter = Date.now() - 4 * 60 * 60 * 1000;
+  let restored = 0;
+
+  for (const file of files) {
+    const fullPath = path.join(SESSION_DIR, file);
+    try {
+      const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+
+      // Throw away sessions older than 4 hours — they're almost certainly stale.
+      if (data.createdAt < staleAfter) {
+        fs.unlinkSync(fullPath);
+        continue;
+      }
+
+      uploadSessions.set(data.sessionId, {
+        ...data,
+        // Deserialise the chunk list back into a Set for O(1) lookups.
+        completedChunks: new Set(data.completedChunks ?? []),
+        // Re-detect columnMap from the next chunk header.
+        columnMap: null,
+      });
+      restored++;
+    } catch (err) {
+      console.error(`Skipping corrupt session file ${file}:`, err.message);
+      try { fs.unlinkSync(fullPath); } catch { /* best effort */ }
+    }
+  }
+
+  if (restored > 0) console.log(`✅ Restored ${restored} upload session(s) from disk`);
+};
+
+loadSessionsFromDisk();
+
+// Prune stale sessions from both RAM and disk every hour.
+setInterval(() => {
+  const staleAfter = Date.now() - 4 * 60 * 60 * 1000;
+  for (const [id, session] of uploadSessions) {
+    if (session.createdAt < staleAfter) {
+      deleteSessionFile(id);
+      uploadSessions.delete(id);
+    }
+  }
+}, 60 * 60 * 1000);
+
+// Each uploaded chunk is a small CSV with its own header row.
+const parseCSVChunk = (csvText) =>
+  new Promise((resolve, reject) => {
+    const rows = [];
+    let detectedHeaders = null;
+
+    Readable.from([csvText])
+      .pipe(
+        csvParser({
+          separator: ',',
+          skipEmptyLines: true,
+          trim: true,
+          mapHeaders: ({ header }) => header?.replace(/^﻿/, '').trim(),
+        })
+      )
+      .on('headers', (h) => { detectedHeaders = h; })
+      .on('data', (row) => rows.push(row))
+      .on('end', () => resolve({ rows, headers: detectedHeaders }))
+      .on('error', reject);
+  });
+
+
+// Start a session, or resume one for the same file fingerprint.
+router.post('/session/start', (req, res) => {
+  const { fileName, totalChunks, fileFingerprint } = req.body;
+
+  // Resume path: find any live session for the same file
+  for (const [id, session] of uploadSessions) {
+    if (session.fileFingerprint === fileFingerprint && session.status !== 'done') {
+      return res.json({
+        sessionId: id,
+        resuming: true,
+        completedChunks: [...session.completedChunks],
+        insertedSoFar: session.totalInserted,
+      });
+    }
+  }
+
+  // Fresh session
+  const sessionId = createHash('sha1')
+    .update(`${Date.now()}-${fileName}-${Math.random()}`)
+    .digest('hex')
+    .slice(0, 16);
+
+  const newSession = {
+    sessionId,            // stored inside the object so persistSession can access it
+    fileFingerprint,
+    fileName,
+    totalChunks,
+    completedChunks: new Set(),
+    columnMap: null,      // detected from the first chunk's header row
+    totalInserted: 0,
+    totalSkipped: 0,
+    totalRows: 0,
+    totalDuplicates: 0,   // actual DB-detected duplicates, not an estimate
+    validationSummary: createValidationSummary(),
+    status: 'uploading',
+    createdAt: Date.now(),
+  };
+
+  uploadSessions.set(sessionId, newSession);
+  // Persist immediately so the session exists before the first chunk arrives.
+  persistSession(newSession);
+
+  res.json({ sessionId, resuming: false, completedChunks: [] });
+});
+
+// Process one self-contained CSV chunk; retries are safe because INSERT IGNORE is idempotent.
+router.post('/session/:sessionId/chunk', express.text({ limit: '5mb', type: 'text/plain' }), async (req, res) => {
+  const { sessionId } = req.params;
+  const chunkIndex = parseInt(req.query.chunkIndex, 10);
+  const csvText = req.body;
+
+  const session = uploadSessions.get(sessionId);
+  if (!session) {
+    return res.status(404).json({
+      status: 'error',
+      message: 'Upload session not found or expired — please start a new upload.',
+    });
+  }
+
+  // Idempotent: acknowledge chunks we already processed without re-inserting
+  if (session.completedChunks.has(chunkIndex)) {
+    return res.json({
+      status: 'ok',
+      alreadyProcessed: true,
+      insertedSoFar: session.totalInserted,
+      completedChunks: session.completedChunks.size,
+    });
+  }
+
+  try {
+    const { rows, headers } = await parseCSVChunk(csvText);
+
+    // Build the column map once from the first chunk that carries the header row.
+    if (!session.columnMap && headers) {
+      const colMap = buildColumnMap(headers);
+      const missing = REQUIRED_CSV_COLUMNS.filter((col) => !colMap[col]);
+      if (missing.length > 0) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Missing required columns: ${missing.join(', ')}`,
+        });
+      }
+      session.columnMap = colMap;
+    }
+
+    // Update session counters only after the DB write succeeds.
+    const chunkValidationSummary = createValidationSummary();
+    const validTrips = [];
+    let chunkSkipped = 0;
+
+    for (const row of rows) {
+      const normalized = normalizeUploadedTrip(
+        row, session.columnMap, session.totalRows + validTrips.length + chunkSkipped + 1,
+        chunkValidationSummary
+      );
+      if (normalized.status === 'valid') validTrips.push(normalized.trip);
+      else if (normalized.status === 'skip') chunkSkipped++;
+    }
+
+    const { inserted, duplicates } = await insertTripChunk(validTrips);
+
+    // If a crash happens after DB insert but before persistence, a retry looks like all duplicates.
+    // Skip counters in that case so the final summary stays accurate.
+    const isCrashRetry = validTrips.length > 0 && inserted === 0 && duplicates === validTrips.length;
+
+    if (!isCrashRetry) {
+      session.totalRows    += rows.length;
+      session.totalSkipped += chunkSkipped;
+      session.totalDuplicates = (session.totalDuplicates ?? 0) + duplicates;
+
+      // Merge per-chunk validation detail into the session summary.
+      for (const key of Object.keys(chunkValidationSummary)) {
+        session.validationSummary[key] = (session.validationSummary[key] ?? 0) + chunkValidationSummary[key];
+      }
+    } else {
+      console.log(`[session ${sessionId}] Chunk ${chunkIndex}: crash-retry detected — skipping row count update`);
+    }
+
+    session.totalInserted += inserted;
+    session.completedChunks.add(chunkIndex);
+
+    // Reply only after this chunk is durable on disk.
+    await persistSession(session);
+
+    res.json({
+      status: 'ok',
+      insertedThisChunk: inserted,
+      insertedSoFar: session.totalInserted,
+      completedChunks: session.completedChunks.size,
+      totalChunks: session.totalChunks,
+    });
+  } catch (err) {
+    console.error(`Chunk ${chunkIndex} error for session ${sessionId}:`, err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Finalize the session and return the overall upload summary.
+router.post('/session/:sessionId/complete', (req, res) => {
+  const { sessionId } = req.params;
+  const session = uploadSessions.get(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ status: 'error', message: 'Upload session not found or expired.' });
+  }
+
+  session.status = 'done';
+  // Session is finished — remove the file so it doesn't get reloaded on next startup.
+  deleteSessionFile(sessionId);
+
+  // Trust the DB duplicate count; retries can distort arithmetic estimates.
+  const duplicateCount = session.totalDuplicates ?? 0;
+
+  const message = session.totalInserted === 0
+    ? 'All rows already exist in the database — nothing new was added. Clear user data first if you want to replace it.'
+    : `Successfully uploaded ${session.totalInserted} records. ${duplicateCount} duplicates were ignored.`;
+
+  res.json({
+    status: 'success',
+    message,
+    totalRecords: session.totalInserted,
+    totalRows: session.totalRows,
+    skippedRows: session.totalSkipped,
+    duplicateCount,
+    validationSummary: session.validationSummary,
+    supportedFields: REQUIRED_CSV_COLUMNS,
+  });
+});
+
 const uploadsDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
   console.log('Created uploads directory:', uploadsDir);
 }
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir);
@@ -136,11 +432,8 @@ const formatValidationDetails = (summary) =>
     .filter(Boolean)
     .join('; ');
 
-// L8: Deterministic ride_id for rows without an explicit ID.
-// Using Date.now() + rowNumber previously produced a different ID each upload,
-// so INSERT IGNORE could not detect duplicate rows across chunks or re-uploads.
-// A SHA-1 of the stable trip fields guarantees the same row always gets the same
-// generated ID, enabling DB-level deduplication via INSERT IGNORE.
+// Rows without ride_id still need a stable key so INSERT IGNORE can detect
+// duplicates across chunks and re-uploads.
 const tripContentHash = (startedAt, startLat, startLng, endLat, endLng) =>
   `auto-${createHash('sha1')
     .update(`${startedAt}|${startLat}|${startLng}|${endLat}|${endLng}`)
@@ -165,7 +458,7 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
     return { status: 'skip' };
   }
 
-  // Required fields: rideId absence is tolerated — we will generate a hash instead
+  // ride_id is optional because a stable hash is generated below.
   if (!startedAt || !endedAt || !startLatRaw || !startLngRaw || !endLatRaw || !endLngRaw) {
     validationSummary.missingRequiredValues++;
     return { status: 'skip' };
@@ -198,8 +491,7 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
     return { status: 'skip' };
   }
 
-  // Resolve final ride_id: explicit value wins; otherwise derive a stable hash from
-  // the trip's content so INSERT IGNORE deduplicates across chunks and re-uploads.
+  // Prefer the source ride_id when present; otherwise hash stable trip fields for deduplication.
   const finalRideId = explicitRideId || tripContentHash(startedAt, startLat, startLng, endLat, endLng);
 
   return {
@@ -224,8 +516,9 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
 };
 
 const insertTripChunk = async (chunk) => {
-  if (chunk.length === 0) return 0;
+  if (chunk.length === 0) return { inserted: 0, duplicates: 0 };
 
+  // INSERT IGNORE preserves existing trips and skips duplicate ride_id values.
   const query = `
     INSERT IGNORE INTO trips (
       ride_id, rideable_type, started_at, ended_at, start_station_name,
@@ -235,7 +528,10 @@ const insertTripChunk = async (chunk) => {
   `;
 
   const [result] = await pool.query(query, [chunk]);
-  return result.affectedRows;
+  // affectedRows counts only newly inserted rows.
+  const inserted   = result.affectedRows;
+  const duplicates = chunk.length - inserted;
+  return { inserted, duplicates };
 };
 
 const cleanupUploadedFile = (filePath) => {
@@ -249,7 +545,6 @@ const cleanupUploadedFile = (filePath) => {
   }
 };
 
-// Upload CSV endpoint
 router.post('/csv', upload.single('csvFile'), async (req, res) => {
   try {
     console.log('Upload request received:', req.body);
@@ -278,19 +573,16 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
     const chunkSize = 1000;
     const validationSummary = createValidationSummary();
 
-    // L7: Concurrency-limited insert pool.
-    // Previously every chunk queued strictly behind a single pendingFlush promise, so
-    // inserts were fully sequential. Allowing 2 parallel inserts doubles DB throughput
-    // on large files. INSERT IGNORE is idempotent so order does not matter for correctness.
+    // Keep a small insert pool so large files stream steadily without flooding MySQL.
+    // INSERT IGNORE makes chunk order irrelevant for duplicate handling.
     const MAX_PARALLEL_INSERTS = 2;
     let activeInserts = 0;
     const insertErrors = [];
 
-    // Fire an insert immediately — caller controls whether to pause the stream.
     const runInsert = (rowsToInsert, chunkNumber) => {
       activeInserts++;
       insertTripChunk(rowsToInsert)
-        .then((inserted) => {
+        .then(({ inserted }) => {
           totalInserted += inserted;
           console.log(`Stream chunk ${chunkNumber}: inserted ${inserted}/${rowsToInsert.length} records`);
         })
@@ -298,7 +590,6 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
         .finally(() => { activeInserts--; });
     };
 
-    // Wait for all in-flight inserts to finish before closing
     const drainInserts = () =>
       new Promise((resolve) => {
         const check = () => (activeInserts === 0 ? resolve() : setImmediate(check));
@@ -313,9 +604,7 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
       runInsert(rowsToInsert, flushCount);
     };
 
-    // Read and parse CSV
     await new Promise((resolve, reject) => {
-      // Check if file exists before trying to read it
       if (!fs.existsSync(filePath)) {
         reject(new Error(`Uploaded file not found at path: ${filePath}`));
         return;
@@ -325,16 +614,13 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
       console.log('File path:', filePath);
       
       const parser = csvParser({
-          // Windows-compatible CSV parsing options
           separator: ',',
           skipEmptyLines: true,
           trim: true,
-          // Handle different line endings
           ltrim: true,
           rtrim: true,
           mapHeaders: ({ header }) =>
             header?.replace(/^\uFEFF/, '').trim(),
-          // Additional options for Windows compatibility
           strict: false,
           skipLinesWithEmptyValues: false
         });
@@ -370,8 +656,7 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
 
           if (chunk.length >= chunkSize) {
             flushChunk();
-            // Apply backpressure only when both slots are occupied so we never
-            // queue more than MAX_PARALLEL_INSERTS concurrent DB writes.
+            // Pause parsing when both DB insert slots are full.
             if (activeInserts >= MAX_PARALLEL_INSERTS) {
               parser.pause();
               const resume = () => (activeInserts < MAX_PARALLEL_INSERTS ? parser.resume() : setImmediate(resume));
@@ -421,31 +706,27 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
       });
     }
 
+    // Rows that passed validation but weren't inserted are duplicates already in the DB.
     const duplicatesEstimated = validRows - totalInserted;
 
-    if (totalInserted === 0) {
-      return res.json({
-        status: 'success',
-        message: 'No new records were added. This file appears to be already uploaded (all rows were duplicates).',
-        totalRecords: 0,
-        skippedRows,
-        totalRows,
-        duplicateCount: duplicatesEstimated,
-        validationSummary,
-      });
-    }
-
     const validationDetails = formatValidationDetails(validationSummary);
-    const message = skippedRows > 0 
-      ? `Successfully uploaded ${totalInserted} records. ${skippedRows} rows were skipped${validationDetails ? ` (${validationDetails})` : ''}. ${duplicatesEstimated} duplicate records were ignored.`
-      : `Successfully uploaded ${totalInserted} records. ${duplicatesEstimated} duplicate records were ignored.`;
+
+    // Build a summary depending on whether anything was actually new.
+    let message;
+    if (totalInserted === 0) {
+      message = 'All rows already exist in the database — nothing new was added. If you meant to replace the data, clear user data first and re-upload.';
+    } else if (skippedRows > 0) {
+      message = `Successfully uploaded ${totalInserted} records. ${skippedRows} rows were skipped${validationDetails ? ` (${validationDetails})` : ''}. ${duplicatesEstimated} duplicate records were ignored.`;
+    } else {
+      message = `Successfully uploaded ${totalInserted} records. ${duplicatesEstimated} duplicate records were ignored.`;
+    }
 
     res.json({
       status: 'success',
-      message: message,
+      message,
       totalRecords: totalInserted,
-      skippedRows: skippedRows,
-      totalRows: totalRows,
+      skippedRows,
+      totalRows,
       duplicateCount: duplicatesEstimated,
       validationSummary,
       supportedFields: REQUIRED_CSV_COLUMNS,
@@ -470,29 +751,115 @@ router.post('/csv', upload.single('csvFile'), async (req, res) => {
   }
 });
 
-// Delete user uploaded data
-router.delete('/user-data', async (req, res) => {
+// Current delete-job state for resume/polling UI.
+router.get('/delete-status', async (req, res) => {
   try {
-    const [result] = await pool.query(
-      'DELETE FROM trips WHERE is_user_uploaded = true'
-    );
-
-    res.json({
-      status: 'success',
-      message: `Deleted ${result.affectedRows} user uploaded records`,
-      deletedCount: result.affectedRows
-    });
-  } catch (error) {
-    console.error('Delete error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to delete user data',
-      error: error.message
-    });
+    const [[job]] = await pool.query('SELECT status, total, deleted FROM delete_jobs WHERE id = 1');
+    if (!job || job.status === 'done') return res.json({ status: 'idle' });
+    res.json({ status: job.status, total: job.total, deleted: job.deleted });
+  } catch {
+    res.json({ status: 'idle' });
   }
 });
 
-// Get data source info
+router.delete('/user-data', async (req, res) => {
+  // Reject a second concurrent delete before touching the response.
+  try {
+    const [[job]] = await pool.query('SELECT status FROM delete_jobs WHERE id = 1');
+    if (job?.status === 'running') {
+      return res.status(409).json({ error: 'A delete is already in progress' });
+    }
+  } catch { /* ignore — table may not exist yet on very first boot */ }
+
+  // Stream batch progress to the browser with SSE.
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Keep deleting after disconnect; just stop writing to the closed socket.
+  let clientConnected = true;
+  req.on('close', () => { clientConnected = false; });
+
+  // Silently drops writes when the client has disconnected.
+  const send = (data) => {
+    if (!clientConnected) return;
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { /* socket closed */ }
+  };
+
+  const BATCH_SIZE = 5000;
+  const MAX_DEADLOCK_RETRIES = 5;
+
+  try {
+    const [[{ total }]] = await pool.query(
+      'SELECT COUNT(*) AS total FROM trips WHERE is_user_uploaded = true'
+    );
+
+    send({ type: 'start', total });
+
+    if (total === 0) {
+      await pool.query(
+        "INSERT INTO delete_jobs (id, status, total, deleted) VALUES (1,'done',0,0) " +
+        "ON DUPLICATE KEY UPDATE status='done', total=0, deleted=0"
+      );
+      send({ type: 'done', deleted: 0, total: 0 });
+      return res.end();
+    }
+
+    // Persist job as 'running' so a server restart can detect an interrupted delete.
+    await pool.query(
+      "INSERT INTO delete_jobs (id, status, total, deleted) VALUES (1,'running',?,0) " +
+      "ON DUPLICATE KEY UPDATE status='running', total=?, deleted=0",
+      [total, total]
+    );
+
+    let totalDeleted = 0;
+
+    while (true) {
+      // Retry each batch on deadlock with exponential back-off.
+      let result;
+      for (let attempt = 1; attempt <= MAX_DEADLOCK_RETRIES; attempt++) {
+        try {
+          [result] = await pool.query(
+            'DELETE FROM trips WHERE is_user_uploaded = true LIMIT ?',
+            [BATCH_SIZE]
+          );
+          break;
+        } catch (err) {
+          if (err.code === 'ER_LOCK_DEADLOCK' && attempt < MAX_DEADLOCK_RETRIES) {
+            console.warn(`Delete deadlock on attempt ${attempt}, retrying…`);
+            await new Promise(r => setTimeout(r, attempt * 300));
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      totalDeleted += result.affectedRows;
+
+      // Persist progress so the UI can poll it after navigating back.
+      await pool.query('UPDATE delete_jobs SET deleted = ? WHERE id = 1', [totalDeleted]);
+      send({ type: 'progress', deleted: totalDeleted, total });
+
+      if (result.affectedRows < BATCH_SIZE) break;
+
+      // Short yield between batches so other queries can slip in.
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    await pool.query("UPDATE delete_jobs SET status='done', deleted=? WHERE id=1", [totalDeleted]);
+    send({ type: 'done', deleted: totalDeleted, total });
+    if (clientConnected) res.end();
+  } catch (error) {
+    console.error('Delete error:', error);
+    try {
+      await pool.query("UPDATE delete_jobs SET status='interrupted' WHERE id=1");
+    } catch { /* ignore */ }
+    send({ type: 'error', message: error.message });
+    if (clientConnected) res.end();
+  }
+});
+
 router.get('/data-sources', async (req, res) => {
   try {
     const [preloadedCount] = await pool.query(
@@ -553,40 +920,59 @@ router.get('/data-sources', async (req, res) => {
   }
 });
 
-// Sample CSV download endpoint
-router.get('/sample-csv', (req, res) => {
-  try {
-    const csvContent = `ride_id,rideable_type,started_at,ended_at,start_station_name,start_station_id,end_station_name,end_station_id,start_lat,start_lng,end_lat,end_lng,member_casual
-SAMPLE_001,electric_bike,2024-01-22 18:43:19.012,2024-01-22 18:48:10.708,Frederick Douglass Blvd & W 145 St,7954.12,St Nicholas Ave & W 126 St,7756.10,40.823071718,-73.941738367,40.8114323,-73.9518776,member
-SAMPLE_002,electric_bike,2024-01-11 19:19:18.721,2024-01-11 19:47:36.007,W 54 St & 6 Ave,6771.13,E 74 St & 1 Ave,6953.08,40.761822224,-73.977036119,40.7689738,-73.95482273,member
-SAMPLE_003,classic_bike,2024-01-15 08:30:00,2024-01-15 08:45:00,Central Park Station,CP001,Metro Station,MS001,40.7589,-73.9851,40.7505,-73.9934,casual
-SAMPLE_004,electric_bike,2024-01-15 09:00:00,2024-01-15 09:20:00,Union Square,US001,Brooklyn Bridge,BB001,40.7359,-73.9911,40.7061,-73.9969,member
-SAMPLE_005,classic_bike,2024-01-15 10:15:00,2024-01-15 10:35:00,Washington Square,WS001,NYU Campus,NYU001,40.7308,-73.9976,40.7295,-73.9961,casual
-SAMPLE_006,electric_bike,2024-01-15 11:00:00,2024-01-15 11:25:00,Times Square,TS001,Rockefeller Center,RC001,40.7580,-73.9855,40.7587,-73.9787,member
-SAMPLE_007,classic_bike,2024-01-15 12:30:00,2024-01-15 12:50:00,Grand Central,GCT001,Empire State Building,ESB001,40.7527,-73.9772,40.7484,-73.9857,casual`;
+const SAMPLES_DIR = path.join(process.cwd(), 'samples');
 
-    // Set proper headers for CSV download with Windows compatibility
+const SAMPLE_FILES = {
+  standard: '202004-divvy-tripdata.csv',
+  extended: 'JC-202605-citibike-tripdata.csv',
+};
+
+router.get('/sample-csv', (req, res) => {
+  const type = req.query.type;
+
+  // Serve a real file for standard / extended.
+  if (type === 'standard' || type === 'extended') {
+    const filename = SAMPLE_FILES[type];
+    const filepath = path.join(SAMPLES_DIR, filename);
+
+    if (!fs.existsSync(filepath)) {
+      return res.status(404).json({ status: 'error', message: `Sample file not found: ${filename}` });
+    }
+
+    const stat = fs.statSync(filepath);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="sample-bicycle-data.csv"');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', stat.size);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Content-Length', Buffer.byteLength(csvContent, 'utf8'));
-    
-    // Add BOM for better Excel compatibility on Windows
+
+    fs.createReadStream(filepath).pipe(res);
+    return;
+  }
+
+  // Minimal sample \u2014 generated inline (no real file needed).
+  try {
+    const csvContent = [
+      'started_at,ended_at,start_lat,start_lng,end_lat,end_lng',
+      '2024-01-15 08:23:11,2024-01-15 08:37:42,40.7127,-74.0059,40.7282,-73.9942',
+      '2024-01-15 09:01:55,2024-01-15 09:14:30,40.7282,-73.9942,40.7489,-73.9680',
+      '2024-01-15 09:45:00,2024-01-15 10:02:17,40.7489,-73.9680,40.7580,-73.9855',
+      '2024-01-15 10:30:22,2024-01-15 10:44:55,40.7580,-73.9855,40.7127,-74.0059',
+      '2024-01-15 11:05:10,2024-01-15 11:19:48,40.7350,-73.9910,40.7210,-74.0020',
+    ].join('\n');
+
     const bom = '\uFEFF';
-    res.send(bom + csvContent);
+    const body = Buffer.from(bom + csvContent, 'utf8');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="sample-minimal.csv"');
+    res.setHeader('Content-Length', body.length);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(body);
   } catch (error) {
-    console.error('Sample CSV download error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to generate sample CSV file',
-      error: error.message
-    });
+    console.error('Sample CSV error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to generate sample CSV', error: error.message });
   }
 });
 
-// Helper function to validate global latitude/longitude ranges.
 const isValidCoordinate = (lat, lng) => {
   if (!lat || !lng) return false;
   

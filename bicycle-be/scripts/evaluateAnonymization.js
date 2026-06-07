@@ -4,7 +4,6 @@ import csvParser from 'csv-parser';
 import { performance } from 'perf_hooks';
 import { applyKAnonymity, applySuppressionBaseline, applyFixedGridBaseline } from '../services/anonymization.js';
 
-// ─── CLI argument parsing ─────────────────────────────────────────────────────
 
 const args = new Map(
   process.argv
@@ -23,7 +22,6 @@ const temporalValues = (args.get('--temporal')     || 'none,period,hour').split(
 const methodValues   = (args.get('--methods')      || 'merge-nearest,suppression-baseline,fixed-grid-baseline').split(',');
 const outputDir      = args.get('--outputDir')     || path.join(process.cwd(), 'evaluation-results');
 
-// ── ℓ-Diversity sweep params ──────────────────────────────────────────────────
 // --lValues=1,2,3,4   (1 = k-only, acts as baseline)
 // --sensitiveAttrs=member_casual,destination_area
 // When lValues contains values >1 the script adds dedicated ℓ-diversity runs
@@ -31,7 +29,6 @@ const outputDir      = args.get('--outputDir')     || path.join(process.cwd(), '
 const lValues          = (args.get('--lValues')       || '1,2,3').split(',').map((v) => parseInt(v, 10));
 const sensitiveAttrs   = (args.get('--sensitiveAttrs') || 'member_casual,destination_area').split(',');
 
-// ── ε-DP sweep params ─────────────────────────────────────────────────────────
 // --epsilonValues=Infinity,10,5,2,1,0.5
 // Infinity = no noise (baseline). Finite values apply Laplace noise.
 const epsilonValues    = (args.get('--epsilonValues')  || 'Infinity,10,5,2,1')
@@ -39,7 +36,6 @@ const epsilonValues    = (args.get('--epsilonValues')  || 'Infinity,10,5,2,1')
   .map((v) => (v === 'Infinity' || v === 'inf' ? Infinity : parseFloat(v)))
   .filter((v) => Number.isFinite(v) || v === Infinity);
 
-// ─── Column aliases ───────────────────────────────────────────────────────────
 
 const columnAliases = {
   ride_id:       ['ride_id', 'ride id', 'trip_id', 'trip id', 'id', 'rental_id', 'rental id'],
@@ -65,7 +61,6 @@ const getAliasedValue = (row, field) => {
   return alias ? normalizedRow[normalizeColumnName(alias)] : undefined;
 };
 
-// ─── CSV reading ──────────────────────────────────────────────────────────────
 
 const readTrips = async () => {
   const trips = [];
@@ -94,7 +89,6 @@ const readTrips = async () => {
   return trips;
 };
 
-// ─── Output helpers ───────────────────────────────────────────────────────────
 
 const csvEscape = (value) => {
   if (value === undefined || value === null) return '';
@@ -127,7 +121,6 @@ const writeResults = (payload) => {
   return { jsonPath, csvPath: csvPathOut };
 };
 
-// ─── Method map ───────────────────────────────────────────────────────────────
 
 const methods = {
   'merge-nearest':        applyKAnonymity,
@@ -135,7 +128,6 @@ const methods = {
   'fixed-grid-baseline':  applyFixedGridBaseline,
 };
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 
 const main = async () => {
   if (!fs.existsSync(csvPath)) {
@@ -145,7 +137,6 @@ const main = async () => {
   const trips  = await readTrips();
   const results = [];
 
-  // ── 1. Standard sweep: k × temporal × method (same as before) ────────────
   for (const sampleSize of sampleSizes) {
     const sample = trips.slice(0, sampleSize);
 
@@ -174,7 +165,6 @@ const main = async () => {
     }
   }
 
-  // ── 2. ℓ-Diversity sweep: l × sensitiveAttr (merge-nearest, temporal=none) ─
   const lDiversityRuns = lValues.filter((l) => l >= 2);
   if (lDiversityRuns.length > 0) {
     console.log(`\n→ Running ℓ-diversity sweep: l=${lDiversityRuns.join(',')} × attr=${sensitiveAttrs.join(',')}`);
@@ -212,7 +202,6 @@ const main = async () => {
     }
   }
 
-  // ── 3. ε-DP sweep: epsilon × k (merge-nearest, temporal=none, l=1) ────────
   const dpRuns = epsilonValues.filter((e) => Number.isFinite(e));
   if (dpRuns.length > 0) {
     console.log(`\n→ Running ε-DP sweep: ε=${dpRuns.join(',')} × k=${kValues.join(',')}`);
@@ -249,7 +238,6 @@ const main = async () => {
     }
   }
 
-  // ── Write output ──────────────────────────────────────────────────────────
   const payload = {
     csvPath,
     loadedRows: trips.length,

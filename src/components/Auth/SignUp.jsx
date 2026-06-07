@@ -51,7 +51,7 @@ const SignUp = () => {
         <div className="auth-logo">
           <div className="auth-logo-icon"><LockOutlined /></div>
           <Title level={3} style={{ margin: 0 }}>Create account</Title>
-          <Text type="secondary">Join K-Anon Privacy Tool</Text>
+          <Text type="secondary">Join MobiAnon</Text>
         </div>
 
         {apiError && (

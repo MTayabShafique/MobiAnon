@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-// Base URL
 const BASE_URL = ' http://127.0.0.1:8000/';
 
-// Create Axios instance
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
@@ -11,7 +9,6 @@ const axiosInstance = axios.create({
 
 const getToken = () => localStorage.getItem('authToken');
 
-// Function to refresh the token
 const refreshAuthToken = async () => {
   try {
     const refreshToken = localStorage.getItem('refreshToken');
@@ -23,7 +20,6 @@ const refreshAuthToken = async () => {
       refreshToken,
     });
 
-    // Update tokens
     const { accessToken, refreshToken: newRefreshToken } = response.data;
     localStorage.setItem('authToken', accessToken);
     localStorage.setItem('refreshToken', newRefreshToken);
@@ -35,7 +31,6 @@ const refreshAuthToken = async () => {
   }
 };
 
-// Request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = getToken();
@@ -49,7 +44,6 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Response interceptor
 axiosInstance.interceptors.response.use(
   (response) => response, 
   async (error) => {

@@ -4,7 +4,6 @@
   margin: 0;
 }
 
-/* ─── Design tokens ────────────────────────────────────────────────────────── */
 :root {
   --app-bg:             #f0f4fa;
   --app-surface:        #ffffff;
@@ -57,7 +56,6 @@
   --sidebar-active:     rgba(22,119,255,0.14);
 }
 
-/* ─── Base ─────────────────────────────────────────────────────────────────── */
 body {
   background: var(--app-bg);
   color: var(--app-text);
@@ -83,7 +81,6 @@ body {
   box-sizing: border-box;
 }
 
-/* ─── Top Navigation ───────────────────────────────────────────────────────── */
 .topnav {
   position: sticky;
   top: 0;
@@ -223,7 +220,6 @@ body {
   font-size: 13px;
 }
 
-/* ─── Hero section ─────────────────────────────────────────────────────────── */
 .tool-hero {
   display: flex;
   align-items: flex-start;
@@ -277,7 +273,6 @@ body {
   opacity: 0.85;
 }
 
-/* ─── Controls panel ───────────────────────────────────────────────────────── */
 .controls-panel,
 .map-panel,
 .comparison-card,
@@ -297,7 +292,6 @@ body {
   box-shadow: var(--app-shadow-md) !important;
 }
 
-/* ─── Control labels ───────────────────────────────────────────────────────── */
 .control-label {
   display: flex;
   align-items: center;
@@ -326,6 +320,30 @@ body {
   opacity: 0.9;
 }
 
+/* ── Help / info icon tooltip — white background everywhere ─────────────── */
+.help-tooltip .ant-tooltip-inner {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.help-tooltip .ant-tooltip-arrow::before,
+.help-tooltip .ant-tooltip-arrow::after {
+  background: #ffffff;
+}
+/* keep white even in dark theme */
+.theme-dark .help-tooltip .ant-tooltip-inner {
+  background: #ffffff;
+  color: #1f2937;
+  border-color: #d1d5db;
+}
+.theme-dark .help-tooltip .ant-tooltip-arrow::before,
+.theme-dark .help-tooltip .ant-tooltip-arrow::after {
+  background: #ffffff;
+}
+
 /* Data source option inside Select */
 .datasource-option {
   display: flex;
@@ -342,7 +360,6 @@ body {
   margin-left: auto;
 }
 
-/* ─── Date range hint / empty state ───────────────────────────────────────── */
 .date-range-hint {
   display: inline-flex;
   align-items: center;
@@ -375,7 +392,6 @@ body {
   opacity: 0.45;
 }
 
-/* ─── Controls panel two-section layout ───────────────────────────────────── */
 .controls-section-label {
   display: flex;
   align-items: center;
@@ -400,7 +416,6 @@ body {
   background: var(--app-border);
 }
 
-/* ─── Action row ───────────────────────────────────────────────────────────── */
 .full-width  { width: 100%; }
 
 .action-row {
@@ -417,16 +432,54 @@ body {
   margin-left: auto;
 }
 
-/* ─── Comparison section (auto-scrolled to on first reveal) ────────────────── */
 .comparison-section {
   scroll-margin-top: 76px; /* clear the sticky topnav (60px) + breathing room */
   animation: panel-rise 240ms ease both;
 }
 
-/* ─── Metric cards ─────────────────────────────────────────────────────────── */
 .metric-grid,
 .comparison-grid {
   margin-bottom: 4px;
+}
+
+/* Collapse accordion for metric sections */
+.metric-collapse {
+  margin-bottom: 8px;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
+.metric-collapse .ant-collapse-header {
+  padding: 8px 12px !important;
+  align-items: center !important;
+}
+
+.metric-collapse .ant-collapse-content-box {
+  padding: 12px !important;
+}
+
+/* Remove bottom margin on metric-grid when inside a collapse panel */
+.metric-collapse .metric-grid {
+  margin-bottom: 0;
+}
+
+.theme-dark .metric-collapse {
+  background: var(--app-surface-raised);
+  border-color: var(--app-border);
+}
+
+.theme-dark .metric-collapse .ant-collapse-item {
+  border-color: var(--app-border);
+}
+
+.theme-dark .metric-collapse .ant-collapse-header {
+  color: var(--app-text);
+  background: var(--app-surface);
+}
+
+.theme-dark .metric-collapse .ant-collapse-content {
+  background: var(--app-surface-raised);
+  border-color: var(--app-border);
 }
 
 .metric-card .ant-statistic-title {
@@ -464,7 +517,6 @@ body {
   color: #f87171 !important;
 }
 
-/* ── ℓ-Diversity section divider inside metric grid ── */
 .metric-section-divider {
   display: flex;
   align-items: center;
@@ -484,7 +536,6 @@ body {
   opacity: 0.45;
 }
 
-/* ─── Section title ────────────────────────────────────────────────────────── */
 .section-title {
   display: flex;
   align-items: center;
@@ -498,7 +549,6 @@ body {
   margin: 0;
 }
 
-/* ─── Comparison section header ───────────────────────────────────────────── */
 .comparison-section-header {
   flex-wrap: wrap;
   gap: 10px;
@@ -527,6 +577,16 @@ body {
   margin-bottom: 0 !important;
 }
 
+.comparison-dirty-alert {
+  border-left: 3px solid #faad14 !important;
+  animation: dirty-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dirty-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 173, 20, 0); }
+  50%       { box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.25); }
+}
+
 .comparison-grid {
   padding-top: 14px;
 }
@@ -536,7 +596,6 @@ body {
   border-left: 3px solid var(--primary) !important;
 }
 
-/* ─── Comparison metrics grid ─────────────────────────────────────────────── */
 .comparison-card { height: 100%; }
 
 .comparison-metrics {
@@ -556,6 +615,7 @@ body {
   transition: background var(--transition);
 }
 
+
 .comparison-metrics strong {
   display: block;
   margin-top: 2px;
@@ -563,7 +623,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Map panels ───────────────────────────────────────────────────────────── */
 .map-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -599,7 +658,6 @@ body {
   background: var(--app-surface-soft);
 }
 
-/* ─── Map empty state ──────────────────────────────────────────────────────── */
 .map-empty-state {
   display: flex;
   flex-direction: column;
@@ -618,7 +676,6 @@ body {
   line-height: 1.5;
 }
 
-/* ─── Help / info icons ────────────────────────────────────────────────────── */
 .metric-help-icon {
   font-size: 12px;
   opacity: 0.5;
@@ -632,7 +689,6 @@ body {
   opacity: 0.9;
 }
 
-/* ─── Guide page ───────────────────────────────────────────────────────────── */
 .guide-page {
   display: flex;
   flex-direction: column;
@@ -772,6 +828,51 @@ body {
   flex-shrink: 0;
 }
 
+/* Architecture diagram live flow animation */
+@keyframes archFlowDash {
+  from { stroke-dashoffset: 26; }
+  to   { stroke-dashoffset: 0;  }
+}
+.arch-live-arrow {
+  stroke-dasharray: 9 5 !important;
+  animation: archFlowDash 0.9s linear infinite;
+}
+
+/* Sequence diagram */
+.seq-diagram-wrap {
+  width: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+.seq-diagram-svg {
+  width: min(100%, 900px);
+  min-width: 580px;
+}
+.seq-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-border);
+}
+.seq-step-badge {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+.seq-step-info {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--app-surface);
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+  font-size: 13px;
+  min-height: 38px;
+}
+
 /* Dark mode adjustments for guide */
 .theme-dark .guide-tabs > .ant-tabs-content-holder {
   background: var(--app-bg);
@@ -787,14 +888,12 @@ body {
   color: var(--app-text);
 }
 
-/* ─── Map compare page ─────────────────────────────────────────────────────── */
 .map-compare-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ─── Upload progress ──────────────────────────────────────────────────────── */
 .upload-progress-block {
   display: flex;
   flex-direction: column;
@@ -807,7 +906,6 @@ body {
   gap: 6px;
 }
 
-/* ─── Data source toggle row (CSVUpload) ───────────────────────────────────── */
 .datasource-toggle-row {
   display: flex;
   align-items: center;
@@ -815,7 +913,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* ─── 3D Privacy Landscape ─────────────────────────────────────────────────── */
 .viz3d-wrapper {
   display: flex;
   flex-direction: column;
@@ -869,7 +966,7 @@ body {
   border: 1px solid var(--app-border);
   border-radius: var(--radius);
   box-shadow: var(--app-shadow-md);
-  pointer-events: none;
+  pointer-events: auto;
   animation: tooltip-in 110ms ease both;
 }
 
@@ -921,13 +1018,172 @@ body {
   box-shadow: var(--app-shadow-md) !important;
 }
 
-/* ─── Animations ───────────────────────────────────────────────────────────── */
+/* ── Tooltip score line ──────────────────────────────────────────────────── */
+.viz3d-tooltip-score {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--app-muted);
+}
+
+/* ── Tooltip action row (apply + pin) ───────────────────────────────────── */
+.viz3d-tooltip-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--app-border);
+  pointer-events: auto;
+}
+.viz3d-tooltip-pin {
+  cursor: pointer;
+  color: var(--app-muted);
+  transition: color 0.15s;
+}
+.viz3d-tooltip-pin:hover { color: #7c3aed; }
+
+/* ── Interpretation panel ───────────────────────────────────────────────── */
+.viz3d-interpretation {
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius);
+  background: var(--app-surface-soft);
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  animation: panel-rise 200ms ease both;
+}
+
+.viz3d-interp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.viz3d-interp-headline {
+  font-weight: 650;
+  font-size: 14px;
+  color: var(--app-text);
+}
+
+.viz3d-interp-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.01em;
+}
+
+.viz3d-interp-source {
+  font-size: 11px;
+  color: var(--app-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.viz3d-interp-body {
+  margin: 0 0 6px;
+  color: var(--app-text);
+  opacity: 0.85;
+}
+
+.viz3d-interp-advice {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  border-left: 3px solid var(--app-border);
+  padding-left: 10px;
+}
+
+/* ── Pin & Compare table ────────────────────────────────────────────────── */
+.viz3d-compare {
+  border: 1px solid #7c3aed44;
+  border-radius: var(--radius);
+  background: var(--app-surface-soft);
+  padding: 12px 16px;
+  animation: panel-rise 200ms ease both;
+}
+
+.viz3d-compare-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--app-text);
+  margin-bottom: 10px;
+}
+
+.viz3d-compare-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--app-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.viz3d-compare-close:hover { background: var(--app-border); }
+
+.viz3d-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.viz3d-compare-table th,
+.viz3d-compare-table td {
+  padding: 5px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text);
+}
+.viz3d-compare-table th {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--app-muted);
+  background: var(--app-surface);
+}
+.viz3d-compare-table td:first-child {
+  color: var(--app-muted);
+  font-size: 12px;
+  width: 140px;
+}
+.viz3d-compare-score-row td {
+  border-top: 2px solid var(--app-border);
+  padding-top: 8px;
+}
+
+.viz3d-compare-better { color: #16a34a !important; font-weight: 600; }
+.viz3d-compare-worse  { color: #dc2626 !important; font-weight: 600; }
+
+.viz3d-compare-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--app-muted);
+}
+
+/* Dark theme overrides for new elements */
+.theme-dark .viz3d-interpretation,
+.theme-dark .viz3d-compare {
+  background: var(--app-surface-soft);
+  border-color: var(--app-border);
+}
+.theme-dark .viz3d-compare-table th {
+  background: var(--app-surface-raised);
+}
+
 @keyframes panel-rise {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ─── Auth pages (Login / SignUp) ──────────────────────────────────────────── */
 .auth-page {
   min-height: calc(100vh - 60px);
   display: flex;
@@ -978,14 +1234,12 @@ body {
   border-top: 1px solid var(--app-border);
 }
 
-/* ─── Upload page ──────────────────────────────────────────────────────────── */
 .upload-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ─── NotFound page ────────────────────────────────────────────────────────── */
 .notfound-page {
   min-height: calc(100vh - 60px);
   display: flex;
@@ -994,7 +1248,6 @@ body {
   background: var(--app-bg);
 }
 
-/* ─── Ant overrides ────────────────────────────────────────────────────────── */
 .one-month-picker .ant-picker-panels > *:nth-child(2) {
   display: none;
 }
@@ -1019,12 +1272,10 @@ body {
   transition: background var(--transition), border-color var(--transition);
 }
 
-/* ─── Dark mode: Leaflet map tiles brightness ──────────────────────────────── */
 .theme-dark .leaflet-tile-pane {
   filter: brightness(0.72) invert(0.06) saturate(0.85);
 }
 
-/* ─── Dark mode: Leaflet popup ─────────────────────────────────────────────── */
 .theme-dark .leaflet-popup-content-wrapper,
 .theme-dark .leaflet-popup-tip {
   background: var(--app-surface) !important;
@@ -1036,57 +1287,161 @@ body {
   border: 1px solid var(--app-border);
 }
 
-/* ─── Dark mode: Ant statistic value in neutral metric cards ───────────────── */
 .theme-dark .metric-card .ant-statistic-content-value {
   color: var(--app-text);
 }
 
-/* ─── Dark mode: comparison metrics cells ──────────────────────────────────── */
 .theme-dark .comparison-metrics span {
   background: var(--app-surface-raised);
   border-color: var(--app-border);
 }
 
-/* ─── Dark mode: controls divider ──────────────────────────────────────────── */
 .theme-dark .controls-divider {
   background: var(--app-border);
 }
 
-/* ─── Dark mode: action-row border ─────────────────────────────────────────── */
 .theme-dark .action-row {
   border-top-color: var(--app-border);
 }
 
-/* ─── Dark mode: date-range-empty ──────────────────────────────────────────── */
 .theme-dark .date-range-empty {
   background: var(--app-surface-soft);
   border-color: var(--app-border);
 }
 
-/* ─── Dark mode: viz3d-tooltip already uses vars, but ensure backdrop ──────── */
 .theme-dark .viz3d-tooltip {
   background: var(--app-surface-raised);
   border-color: var(--app-border);
 }
 
-/* ─── Dark mode: tool-hero gradient stripe shows lighter ───────────────────── */
 .theme-dark .tool-hero {
   background: var(--app-surface);
 }
 
-/* ─── Dark mode: topnav backdrop ───────────────────────────────────────────── */
 .theme-dark .topnav {
   background: rgba(22,27,34,0.94);
   backdrop-filter: blur(16px);
   border-bottom-color: var(--app-border);
 }
 
-/* ─── Dark mode: auth card ─────────────────────────────────────────────────── */
 .theme-dark .auth-card {
   background: var(--app-surface) !important;
 }
 
-/* ─── Responsive ───────────────────────────────────────────────────────────── */
+/* ── Original Trips Baseline Panel ───────────────────────────────────────── */
+.original-baseline-panel {
+  margin-top: 2px;
+}
+
+.baseline-divider.ant-divider {
+  margin: 14px 0 10px !important;
+}
+
+.baseline-divider .ant-divider-inner-text {
+  font-size: 12px;
+  color: var(--app-muted);
+  font-weight: 500;
+}
+
+/* Run Anonymization button pulse — fired after a 3D bar config is applied */
+.run-btn-pulse {
+  border-radius: 6px;
+  animation: run-pulse 1.4s ease-in-out infinite;
+}
+@keyframes run-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(22, 119, 255, 0.55); }
+  65%  { box-shadow: 0 0 0 9px rgba(22, 119, 255, 0);    }
+  100% { box-shadow: 0 0 0 0   rgba(22, 119, 255, 0);    }
+}
+
+/* Three mini stat boxes — stretch to fill the full column width and height */
+.baseline-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  width: 100%;
+  height: 100%;
+  background: var(--app-surface-soft);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-sm);
+}
+
+.baseline-label {
+  font-size: 11px;
+  color: var(--app-muted);
+  line-height: 1.4;
+}
+
+.baseline-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--app-text);
+  line-height: 1.2;
+}
+
+.baseline-sub {
+  font-size: 10px;
+  color: var(--app-muted);
+}
+
+/* Rider-type + bike-type rows */
+.baseline-row {
+  padding: 8px 10px;
+  background: var(--app-surface-soft);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-sm);
+}
+
+.baseline-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.baseline-row-icon {
+  font-size: 11px;
+  color: var(--app-muted);
+}
+
+.baseline-tag-member {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.baseline-tag-casual {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fa8c16;
+}
+
+.baseline-type-tag {
+  font-size: 11px !important;
+}
+
+/* Re-identification risk alert */
+.baseline-risk-alert {
+  padding: 7px 10px !important;
+}
+
+.baseline-risk-alert .ant-alert-message {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Dark-theme overrides */
+.theme-dark .baseline-stat,
+.theme-dark .baseline-row {
+  background: var(--app-surface-soft);
+  border-color: var(--app-border);
+}
+
+.theme-dark .baseline-value {
+  color: var(--app-text);
+}
+
 @media (max-width: 1100px) {
   .map-grid {
     grid-template-columns: 1fr;

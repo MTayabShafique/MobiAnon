@@ -1,16 +1,10 @@
 import mysql from 'mysql2/promise';
 
-// Platform detection and default configs
-// macOS MAMP: port 8889, password 'root'
-// Windows XAMPP: port 3306, password '' (empty)
-// Linux/Other: port 3306, password '' (empty)
-
 const isMacOS = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
-// Get platform-appropriate default config
 const getDefaultConfig = () => {
-  // If environment variables are explicitly set, use those
+  // Environment variables take precedence over local development defaults.
   if (process.env.DB_PORT || process.env.DB_PASSWORD !== undefined) {
     return {
       host: process.env.DB_HOST || 'localhost',
@@ -21,9 +15,7 @@ const getDefaultConfig = () => {
     };
   }
   
-  // Platform-specific defaults
   if (isMacOS) {
-    // macOS: Default to MAMP (port 8889, password 'root')
     return {
       host: 'localhost',
       port: 8889,
@@ -32,7 +24,6 @@ const getDefaultConfig = () => {
       database: process.env.DB_NAME || 'bicycle_data',
     };
   } else if (isWindows) {
-    // Windows: Default to XAMPP (port 3306, empty password)
     return {
       host: 'localhost',
       port: 3306,
@@ -41,7 +32,6 @@ const getDefaultConfig = () => {
       database: process.env.DB_NAME || 'bicycle_data',
     };
   } else {
-    // Linux/Other: Standard MySQL
     return {
       host: 'localhost',
       port: 3306,
@@ -52,16 +42,14 @@ const getDefaultConfig = () => {
   }
 };
 
-// Get all configs to try (for auto-detection)
 const getAllConfigsToTry = () => {
   const configs = [];
   
-  // If env vars are set, only try those
+  // Do not guess alternatives when the user has supplied explicit settings.
   if (process.env.DB_PORT || process.env.DB_PASSWORD !== undefined) {
     return [getDefaultConfig()];
   }
   
-  // macOS: Try MAMP first, then standard
   if (isMacOS) {
     configs.push({
       host: 'localhost',
@@ -78,7 +66,6 @@ const getAllConfigsToTry = () => {
       database: process.env.DB_NAME || 'bicycle_data',
     });
   }
-  // Windows: Try XAMPP first, then MAMP-style as fallback
   else if (isWindows) {
     configs.push({
       host: 'localhost',
@@ -95,7 +82,6 @@ const getAllConfigsToTry = () => {
       database: process.env.DB_NAME || 'bicycle_data',
     });
   }
-  // Linux/Other: Standard MySQL
   else {
     configs.push({
       host: 'localhost',
@@ -109,10 +95,8 @@ const getAllConfigsToTry = () => {
   return configs;
 };
 
-// Get the default config for this platform
 const defaultConfig = getDefaultConfig();
 
-// Create dbConfig with pool settings
 let dbConfig = {
   ...defaultConfig,
   waitForConnections: true,
@@ -120,14 +104,13 @@ let dbConfig = {
   queueLimit: 0
 };
 
-// If DB_SOCKET_PATH is set, use socket connection instead of TCP
+// Socket connections are useful for local MySQL installs that do not expose TCP.
 if (process.env.DB_SOCKET_PATH) {
   dbConfig.socketPath = process.env.DB_SOCKET_PATH;
   delete dbConfig.host;
   delete dbConfig.port;
 }
 
-// Log initial config
 console.log('🔌 MySQL Connection Config:');
 if (dbConfig.socketPath) {
   console.log('   Connection: Unix Socket');
@@ -144,10 +127,8 @@ console.log('   Platform:', isMacOS ? 'macOS' : (isWindows ? 'Windows' : 'Linux/
 console.log('   Default:', configName);
 console.log('');
 
-// Create connection pool immediately with platform defaults
 const pool = mysql.createPool(dbConfig);
 
-// Test connection asynchronously (non-blocking)
 (async () => {
   try {
     const connection = await pool.getConnection();
@@ -156,7 +137,7 @@ const pool = mysql.createPool(dbConfig);
     console.log('✅ MySQL Connection Pool Established');
     console.log('✅ Database connection verified\n');
   } catch (err) {
-    // If default config failed, try auto-detection
+    // In local development, try the common MAMP/XAMPP alternatives before giving up.
     if (!process.env.DB_PORT && process.env.DB_PASSWORD === undefined) {
       console.error('❌ Default config failed. Trying auto-detection...\n');
       
@@ -167,7 +148,6 @@ const pool = mysql.createPool(dbConfig);
         const config = configsToTry[i];
         const configName = config.port === 8889 ? 'MAMP' : 'XAMPP/Standard';
         
-        // Skip if it's the same as default (already tried)
         if (config.port === defaultConfig.port && config.password === defaultConfig.password) {
           continue;
         }
@@ -217,5 +197,4 @@ const pool = mysql.createPool(dbConfig);
   }
 })();
 
-// Export pool
 export { pool };

@@ -50,7 +50,7 @@ const Login = () => {
         <div className="auth-logo">
           <div className="auth-logo-icon"><LockOutlined /></div>
           <Title level={3} style={{ margin: 0 }}>Welcome back</Title>
-          <Text type="secondary">Sign in to K-Anon Privacy Tool</Text>
+          <Text type="secondary">Sign in to MobiAnon</Text>
         </div>
 
         {apiError && (
