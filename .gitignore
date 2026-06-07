@@ -47,3 +47,6 @@ bicycle-be/evaluation-results/
 # Test/coverage output
 coverage/
 .nyc_output/
+
+bicycle-be/paper-results/
+/docs

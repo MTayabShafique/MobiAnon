@@ -164,7 +164,7 @@ To benchmark a different CSV with common mobility headers:
 npm run evaluate:anonymization -- --csv=path/to/other-city.csv --sampleSizes=1000,5000,25000 --k=5,10,20 --temporal=none,period,hour
 ```
 
-## 9. Generate Paper Figures and Tables
+## 9. Generate Figures and Tables
 
 From `bicycle-be`:
 
@@ -182,7 +182,7 @@ Important generated artifacts:
 
 | File | Purpose |
 | --- | --- |
-| `benchmark-report.md` | paper-ready benchmark tables, including baseline comparison |
+| `benchmark-report.md` | ready benchmark tables, including baseline comparison |
 | `runtime-ms.svg` | anonymization runtime plot |
 | `suppressed-records.svg` | suppression plot |
 | `mean-spatial-error-km.svg` | utility-loss plot |
