@@ -451,6 +451,39 @@ body {
   color: var(--metric-warn) !important;
 }
 
+/* ℓ-violations (bad = red, e.g. lViolations > 0) */
+.metric-card-bad {
+  border-left: 3px solid #dc2626 !important;
+}
+
+.metric-card-bad .ant-statistic-content {
+  color: #dc2626 !important;
+}
+
+.theme-dark .metric-card-bad .ant-statistic-content {
+  color: #f87171 !important;
+}
+
+/* ── ℓ-Diversity section divider inside metric grid ── */
+.metric-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 4px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-top: 1px solid var(--app-border);
+  margin-top: 4px;
+}
+
+/* Muted label when a control is disabled */
+.control-label--muted {
+  opacity: 0.45;
+}
+
 /* ─── Section title ────────────────────────────────────────────────────────── */
 .section-title {
   display: flex;
@@ -478,6 +511,12 @@ body {
 
 .comparison-controls {
   flex-shrink: 0;
+}
+
+/* ℓ-Diversity incompatibility warning shown in Anonymization Settings */
+.ldiversity-warn-alert {
+  margin-top: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .comparison-hint-alert {
@@ -604,6 +643,150 @@ body {
   white-space: normal;
 }
 
+/* Sub-navigation tabs */
+.guide-tabs .ant-tabs-nav {
+  margin-bottom: 0 !important;
+}
+
+.guide-tabs .ant-tabs-tab {
+  border-radius: 8px 8px 0 0 !important;
+  font-size: 13px;
+}
+
+.guide-tabs > .ant-tabs-content-holder {
+  border: 1px solid var(--app-border);
+  border-radius: 0 8px 8px 8px;
+  background: var(--app-bg);
+  padding: 16px;
+}
+
+.guide-tab-content {
+  /* inner padding already from content-holder */
+}
+
+/* Feature cards on overview tab */
+.guide-feature-card {
+  height: 100%;
+}
+
+.guide-feature-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* Concept info box */
+.guide-concept-box {
+  border-left: 3px solid;
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+  background: var(--app-surface);
+}
+
+/* Control row (tag + text) */
+.guide-control-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.guide-control-row .ant-tag {
+  margin: 0;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Inline code block */
+.guide-code-block {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--app-text);
+  margin: 0;
+}
+
+/* Data-flow step list */
+.guide-flow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide-flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.guide-flow-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Architecture diagram */
+.arch-diagram-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-border);
+}
+
+.arch-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.arch-legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Dark mode adjustments for guide */
+.theme-dark .guide-tabs > .ant-tabs-content-holder {
+  background: var(--app-bg);
+  border-color: var(--app-border);
+}
+
+.theme-dark .guide-concept-box {
+  background: var(--app-surface);
+}
+
+.theme-dark .guide-code-block {
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
 /* ─── Map compare page ─────────────────────────────────────────────────────── */
 .map-compare-page {
   display: flex;
@@ -636,8 +819,22 @@ body {
 .viz3d-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   animation: panel-rise 260ms ease both;
+}
+
+.viz3d-mode-selector {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+
+.viz3d-mode-hint {
+  display: block;
+  font-size: 12px;
+  text-align: center;
+  opacity: 0.7;
+  margin-top: -4px;
 }
 
 .viz3d-controls {

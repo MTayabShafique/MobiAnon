@@ -81,7 +81,7 @@ router.get('/trips/anonymized', async (req, res) => {
     const filters = validateCommonQuery(req, res);
     if (!filters) return;
 
-    const { k, gridSize, temporalGranularity, l, sensitiveAttr } = req.query;
+    const { k, gridSize, temporalGranularity, l, sensitiveAttr, epsilon } = req.query;
 
     const kValue = parseInt(k, 10);
     if (Number.isNaN(kValue) || kValue < 1) {
@@ -114,12 +114,19 @@ router.get('/trips/anonymized', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Invalid sensitiveAttr value' });
     }
 
+    // ε-DP: parse epsilon — Infinity means disabled (no noise)
+    const epsilonValue = epsilon ? parseFloat(epsilon) : Infinity;
+    if (!Number.isNaN(epsilonValue) && Number.isFinite(epsilonValue) && epsilonValue <= 0) {
+      return res.status(400).json({ status: 'error', message: 'epsilon must be > 0' });
+    }
+
     const result = await getAnonymizedTripsInBounds(filters, {
       k: kValue,
       gridSize: gridSizeValue,
       temporalGranularity: temporalGranularityValue,
       l: lValue,
       sensitiveAttr: sensitiveAttrValue,
+      epsilon: epsilonValue,
     });
 
     return res.status(result.status === 'error' ? 400 : 200).json(result);

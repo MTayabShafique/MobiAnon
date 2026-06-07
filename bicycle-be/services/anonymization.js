@@ -1,9 +1,82 @@
 const DEFAULT_GRID_SIZE = 0.01;
 const EARTH_RADIUS_KM = 6371;
+// 1 degree of latitude ≈ 111.32 km (used for human-readable noise scale reporting)
+const KM_PER_DEG_LAT = 111.32;
 
 const toNumber = (value) => {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+// ─── ε-Differential Privacy helpers ──────────────────────────────────────────
+
+/**
+ * Sample from the Laplace(0, scale) distribution using the inverse-CDF method.
+ * This is the standard mechanism for (ε, 0)-differential privacy.
+ */
+const laplaceSample = (scale) => {
+  // Avoid log(0) at the tails
+  const u = Math.max(Math.min(Math.random() - 0.5, 0.4999), -0.4999);
+  return -scale * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
+};
+
+/**
+ * Apply Laplace noise to the centroids and counts of k-anonymous groups.
+ *
+ * Privacy accounting:
+ *   - Location (lat / lng): global sensitivity = gridSize degrees.
+ *     One trip can shift a centroid by at most one full grid cell.
+ *     → Laplace scale = gridSize / ε
+ *   - Count: global sensitivity = 1 (one trip changes count by exactly 1).
+ *     → Laplace scale = 1 / ε
+ *
+ * This is applied as a post-processing step after k-anonymization so the
+ * k-anonymity guarantee is preserved and DP adds an additional semantic layer.
+ * The composition theorem means the combined mechanism satisfies (ε, 0)-DP
+ * on top of the k-anonymity structural guarantee.
+ */
+const applyDPNoise = (groups, epsilon, gridSize) => {
+  if (!Number.isFinite(epsilon) || epsilon <= 0) {
+    return { noisyGroups: groups, dpStats: null };
+  }
+
+  const locationScale = gridSize / epsilon; // degrees
+  const countScale    = 1 / epsilon;        // trips
+
+  let totalDisplacementKm = 0;
+
+  const noisyGroups = groups.map((group) => {
+    const noisyLat   = group.centroid.lat + laplaceSample(locationScale);
+    const noisyLng   = group.centroid.lng + laplaceSample(locationScale);
+    const noisyCount = Math.max(1, Math.round(group.trips.length + laplaceSample(countScale)));
+
+    const displacementKm = haversineKm(
+      { lat: group.centroid.lat, lng: group.centroid.lng },
+      { lat: noisyLat, lng: noisyLng }
+    );
+    totalDisplacementKm += displacementKm;
+
+    return {
+      ...group,
+      centroid:          { lat: noisyLat, lng: noisyLng },
+      originalCentroid:  group.centroid,
+      noisyCount,
+      dpDisplacementKm:  displacementKm,
+    };
+  });
+
+  return {
+    noisyGroups,
+    dpStats: {
+      epsilon,
+      locationScaleDeg: locationScale,
+      locationScaleKm:  Number((locationScale * KM_PER_DEG_LAT).toFixed(4)),
+      countScale:       Number(countScale.toFixed(4)),
+      avgDisplacementKm: groups.length > 0
+        ? Number((totalDisplacementKm / groups.length).toFixed(4))
+        : 0,
+    },
+  };
 };
 
 // L2: UTC-consistent temporal bucketing with optional IANA timezone support.
@@ -421,11 +494,13 @@ const buildAnonymizationResponse = ({
   k,
   l,
   sensitiveAttr,
+  dpStats,
   gridSize,
   temporalGranularity,
   method,
 }) => {
-  const lActive = l > 1 && sensitiveAttr && sensitiveAttr !== 'none';
+  const lActive  = l > 1 && sensitiveAttr && sensitiveAttr !== 'none';
+  const dpActive = dpStats !== null && dpStats !== undefined;
 
   if (anonymizedGroups.length === 0) {
     return {
@@ -481,12 +556,13 @@ const buildAnonymizationResponse = ({
     return {
       centroidLat: group.centroid.lat,
       centroidLng: group.centroid.lng,
-      count: group.trips.length,
+      count: group.noisyCount ?? group.trips.length,
       temporalBucket: group.temporalBucket,
       cellsMerged: group.cells.size,
       spatialErrorMeanKm,
       spatialErrorMaxKm,
-      ...(lActive && { distinctSensitiveValues }),
+      ...(lActive  && { distinctSensitiveValues }),
+      ...(dpActive && { dpDisplacementKm: group.dpDisplacementKm ?? 0 }),
     };
   });
 
@@ -558,6 +634,14 @@ const buildAnonymizationResponse = ({
       top10HotspotOverlap: topOverlap(rawDensity, anonymizedDensity, 10),
       avgCellsMerged: mergedCellTotal / anonymizedTrips.length,
       ...lDiversityMetrics,
+      ...(dpActive && {
+        dpEnabled:            true,
+        epsilon:              dpStats.epsilon,
+        dpLocationScaleDeg:   dpStats.locationScaleDeg,
+        dpLocationScaleKm:    dpStats.locationScaleKm,
+        dpCountScale:         dpStats.countScale,
+        avgCentroidDisplacementKm: dpStats.avgDisplacementKm,
+      }),
     },
   };
 };
@@ -595,10 +679,42 @@ export const applyKAnonymity = async (trips, k, options = {}) => {
   const l = Number.isInteger(options.l) && options.l >= 2 ? options.l : 1;
   const sensitiveAttr = options.sensitiveAttr || 'none';
 
+  // ε-DP: Infinity means disabled (no noise added)
+  const epsilon = (Number.isFinite(options.epsilon) && options.epsilon > 0)
+    ? options.epsilon
+    : Infinity;
+
   const validation = validateInput(trips, k, temporalGranularity, timezone);
   if (validation.status === 'error') return validation;
 
   const { validTrips } = validation;
+
+  // ── ℓ-diversity cardinality pre-check ────────────────────────────────────
+  // If ℓ exceeds the number of distinct values that actually exist in the
+  // dataset for the chosen attribute, no merging strategy can ever satisfy
+  // the constraint.  Fail fast with a precise, actionable message instead of
+  // silently suppressing everything and returning an opaque "no groups" error.
+  if (l > 1 && sensitiveAttr !== 'none') {
+    const globalValues = new Set(
+      validTrips
+        .map((t) => getSensitiveValue(t, sensitiveAttr, gridSize))
+        .filter((v) => v !== null && v !== undefined)
+    );
+    const globalDistinct = globalValues.size;
+    if (globalDistinct < l) {
+      const sample = [...globalValues].slice(0, 6).map((v) => `"${v}"`).join(', ');
+      return {
+        status: 'error',
+        message:
+          `ℓ=${l} cannot be satisfied: the loaded dataset contains only ` +
+          `${globalDistinct} distinct value${globalDistinct === 1 ? '' : 's'} ` +
+          `for "${sensitiveAttr}" (${sample}${globalValues.size > 6 ? ', …' : ''}). ` +
+          `Reduce ℓ to ${globalDistinct} or less, or choose "Destination area" as the ` +
+          `sensitive attribute (it has many distinct grid-cell values).`,
+      };
+    }
+  }
+
   const buckets = bucketTripsByTime(validTrips);
 
   const suppressedTrips = [];
@@ -621,14 +737,20 @@ export const applyKAnonymity = async (trips, k, options = {}) => {
     );
   });
 
+  // Apply ε-DP noise to released centroids as a post-processing step.
+  // k-anonymity provides the structural guarantee (group size ≥ k);
+  // ε-DP adds a semantic probabilistic guarantee on top via Laplace noise.
+  const { noisyGroups, dpStats } = applyDPNoise(anonymizedGroups, epsilon, gridSize);
+
   return buildAnonymizationResponse({
     trips,
     validTrips,
-    anonymizedGroups,
+    anonymizedGroups: noisyGroups,
     suppressedTrips,
     k,
     l,
     sensitiveAttr,
+    dpStats,
     gridSize,
     temporalGranularity,
     method: 'merge-nearest',
@@ -670,6 +792,7 @@ export const applySuppressionBaseline = async (trips, k, options = {}) => {
     k,
     l: 1,
     sensitiveAttr: 'none',
+    dpStats: null,
     gridSize,
     temporalGranularity,
     method: 'suppression-baseline',
@@ -712,6 +835,7 @@ export const applyFixedGridBaseline = async (trips, k, options = {}) => {
     k,
     l: 1,
     sensitiveAttr: 'none',
+    dpStats: null,
     gridSize,
     temporalGranularity,
     method: 'fixed-grid-baseline',

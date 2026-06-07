@@ -145,6 +145,7 @@ export const getAnonymizedTripsInBounds = async (filters, anonymizationOptions) 
     temporalGranularity: anonymizationOptions.temporalGranularity,
     l: anonymizationOptions.l,
     sensitiveAttr: anonymizationOptions.sensitiveAttr,
+    epsilon: anonymizationOptions.epsilon,
   });
   const anonymizationMs = performance.now() - anonymizationStarted;
 
