@@ -43,10 +43,20 @@ bicycle-be/*.csv
 
 # Generated benchmark/raw evaluation outputs
 bicycle-be/evaluation-results/
+bicycle-be/paper-results/
+
+# Generated report artefacts (figures, charts, compiled reports)
+bicycle-be/reports/
+bicycle-be/figures/
+bicycle-be/charts/
+bicycle-be/outputs/
+bicycle-be/**/*.generated.md
+bicycle-be/**/*.generated.json
 
 # Test/coverage output
 coverage/
 .nyc_output/
 
-bicycle-be/paper-results/
+# Documentation / paper write-up folders (generated, not source)
 /docs
+/paper
