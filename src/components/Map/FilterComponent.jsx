@@ -18,9 +18,12 @@ const { Option } = Select;
 const getDateBounds = (dataSourceInfo, dataSource) => {
   const bounds = dataSourceInfo?.bounds?.[dataSource];
   if (!bounds?.minDate || !bounds?.maxDate) return null;
+  const min = dayjs(bounds.minDate);
+  const max = dayjs(bounds.maxDate);
+  if (!min.isValid() || !max.isValid()) return null;
   return {
-    min: dayjs(bounds.minDate),
-    max: dayjs(bounds.maxDate),
+    min,
+    max,
   };
 };
 
@@ -50,6 +53,22 @@ export const FilterComponent = ({
   };
 
   const dateBounds = getDateBounds(dataSourceInfo, filterState.dataSource);
+  const selectedDate = filterState.date ? dayjs(filterState.date, "YYYY-MM-DD") : null;
+  const selectedDateInBounds = selectedDate?.isValid() && (
+    dateBounds
+      ? selectedDate.isBetween(dateBounds.min, dateBounds.max, "day", "[]")
+      : filterState.dataSource === "preloaded"
+        ? selectedDate.isBetween(dayjs("2024-01-01"), dayjs("2024-01-31"), "day", "[]")
+        : true
+  );
+  const calendarAnchor = selectedDateInBounds
+    ? selectedDate
+    : dateBounds?.min ?? dayjs("2024-01-01");
+
+  React.useEffect(() => {
+    if (!dateBounds || !filterState.date || selectedDateInBounds) return;
+    applyState({ ...filterState, date: dateBounds.min.format("YYYY-MM-DD") });
+  }, [dateBounds, filterState, selectedDateInBounds]);
 
   const disabledDate = (current) => {
     if (!current) return true;
@@ -160,12 +179,8 @@ export const FilterComponent = ({
             key={`${filterState.dataSource}-${dateBounds?.min?.format("YYYY-MM") ?? "none"}`}
             className="date-picker-inline"
             placeholder={datePickerPlaceholder}
-            value={filterState.date ? dayjs(filterState.date, "YYYY-MM-DD") : null}
-            defaultPickerValue={
-              filterState.date
-                ? dayjs(filterState.date, "YYYY-MM-DD")
-                : dateBounds?.min ?? dayjs("2024-01-01")
-            }
+            value={selectedDateInBounds ? selectedDate : null}
+            defaultPickerValue={calendarAnchor}
             onChange={handleDateChange}
             format="YYYY-MM-DD"
             disabledDate={disabledDate}

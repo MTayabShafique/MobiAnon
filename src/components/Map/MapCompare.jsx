@@ -5,7 +5,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Alert, Badge, Button, Card, Col, Collapse, Divider, Empty, Input, notification, Popover,
+  Alert, Badge, Button, Card, Col, Collapse, Divider, Empty, Input, Popover,
   Progress, Row, Select, Skeleton, Space, Spin, Statistic,
   Tag, Tooltip, Typography,
 } from "antd";
@@ -598,7 +598,7 @@ const MiniAnonymizedMap = ({ result, center, gridSize, filter }) => {
 };
 
 
-const fetchStopsData = async (filter, setMapState, mapType) => {
+const fetchStopsData = async (filter, setMapState, mapType, setToolAlert) => {
   setMapState((prev) => ({ ...prev, loading: true }));
   const url = mapType === "anonymized" ? `${API}/api/trips/anonymized` : `${API}/api/trips`;
   try {
@@ -648,20 +648,24 @@ const fetchStopsData = async (filter, setMapState, mapType) => {
       }));
     } else {
       setMapState((prev) => ({ ...prev, loading: false }));
-      notification.warning({ message: "No data returned", description: data.message || "The query returned an empty result." });
+      setToolAlert?.({
+        type: "warning",
+        message: "No data returned",
+        description: data.message || "The query returned an empty result.",
+      });
     }
   } catch (error) {
     setMapState((prev) => ({ ...prev, loading: false }));
     const msg = error.response?.data?.message || error.message;
-    notification.error({
+    setToolAlert?.({
+      type: "error",
       message: `Failed to load ${mapType === "anonymized" ? "anonymized" : "original"} data`,
       description: msg || "Check that the backend server is running on port 5000.",
-      duration: 6,
     });
   }
 };
 
-const fetchKComparisonData = async (filter, gridSize, kValues, setComparisonState) => {
+const fetchKComparisonData = async (filter, gridSize, kValues, setComparisonState, setToolAlert) => {
   setComparisonState((prev) => ({ ...prev, loading: true }));
   try {
     const results = await Promise.all(
@@ -712,7 +716,8 @@ const fetchKComparisonData = async (filter, gridSize, kValues, setComparisonStat
     });
   } catch (error) {
     setComparisonState((prev) => ({ ...prev, loading: false }));
-    notification.error({
+    setToolAlert?.({
+      type: "error",
       message: "Multi-k comparison failed",
       description: error.response?.data?.message || "One or more k values returned an error.",
     });
@@ -753,6 +758,7 @@ const MapCompare = () => {
   const { dataSourceInfo } = useDataSources();
   const comparisonRef  = React.useRef(null);
   const [pendingRun,   setPendingRun]   = useState(false); // pulses the Run button after a 3D bar click
+  const [toolAlert,    setToolAlert]    = useState(null);
 
   const initK = savedSettings?.anonymizedFilter?.k ?? 5;
   const [selectedKValues, setSelectedKValues] = useState(
@@ -836,6 +842,17 @@ const MapCompare = () => {
     setMapStateAnonymized((p) => ({ ...p, filter: { ...p.filter, ...update } }));
   }, []);
 
+  const userUploadedCount = dataSourceInfo?.bounds?.user?.count ?? dataSourceInfo?.userUploaded ?? 0;
+  const requireUserDataIfSelected = useCallback((filter, actionLabel) => {
+    if ((filter.dataSource || "preloaded") !== "user" || userUploadedCount > 0) return true;
+    setToolAlert({
+      type: "warning",
+      message: "User Data is empty",
+      description: `Cannot ${actionLabel}. Please upload a dataset first.`,
+    });
+    return false;
+  }, [userUploadedCount]);
+
   const handle3DSelect = useCallback(({ k, temporalGranularity, l, sensitiveAttr, epsilon }) => {
     setMapStateAnonymized((p) => ({
       ...p,
@@ -855,10 +872,10 @@ const MapCompare = () => {
       sensitiveAttr     !== undefined && `attr=${sensitiveAttr}`,
       epsilon           !== undefined && (epsilon != null ? `ε=${epsilon}` : "DP off"),
     ].filter(Boolean);
-    notification.info({
+    setToolAlert({
+      type: "info",
       message: `Configuration applied: ${parts.join(", ")}`,
       description: 'Press the pulsing "Run Anonymization" button above to render the result on the map.',
-      duration: 5,
     });
     // Pulse the Run Anonymization button so the user immediately knows what to click.
     setPendingRun(true);
@@ -1137,12 +1154,28 @@ const MapCompare = () => {
           />
         )}
 
+        {toolAlert && (
+          <Alert
+            type={toolAlert.type}
+            showIcon
+            closable
+            className="ldiversity-warn-alert"
+            message={toolAlert.message}
+            description={toolAlert.description}
+            onClose={() => setToolAlert(null)}
+          />
+        )}
+
         <div className="action-row">
           <Space wrap>
             <Button
               type="primary"
               icon={<PlayCircleOutlined />}
-              onClick={() => fetchStopsData(mapStateOriginal.filter, setMapStateOriginal, "original")}
+              onClick={() => {
+                if (!requireUserDataIfSelected(mapStateOriginal.filter, "load user data")) return;
+                setToolAlert(null);
+                fetchStopsData(mapStateOriginal.filter, setMapStateOriginal, "original", setToolAlert);
+              }}
               loading={mapStateOriginal.loading}
             >
               Load Original
@@ -1152,6 +1185,8 @@ const MapCompare = () => {
                 type="primary"
                 icon={runBtnIcon}
                 onClick={() => {
+                  if (!requireUserDataIfSelected(mapStateAnonymized.filter, "run anonymization")) return;
+                  setToolAlert(null);
                   setPendingRun(false);
                   lastFetchedAnonConfig.current = {
                     k:                 mapStateAnonymized.filter.k,
@@ -1170,7 +1205,8 @@ const MapCompare = () => {
                       ...(mapStateAnonymized.filter.epsilon != null && { epsilon: mapStateAnonymized.filter.epsilon }),
                     },
                     setMapStateAnonymized,
-                    "anonymized"
+                    "anonymized",
+                    setToolAlert
                   );
                 }}
                 loading={mapStateAnonymized.loading}
@@ -1215,7 +1251,9 @@ const MapCompare = () => {
                     icon={<BarChartOutlined />}
                     loading={kComparison.loading}
                     onClick={async () => {
-                      await fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison);
+                      if (!requireUserDataIfSelected(mapStateAnonymized.filter, "run multi-k comparison")) return;
+                      setToolAlert(null);
+                      await fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison, setToolAlert);
                       setShowKComparison(true);
                       setShowComparisonInfo(true);
                       setShow3D(false);
@@ -1445,13 +1483,21 @@ const MapCompare = () => {
                 value={selectedKValues}
                 onChange={(vals) => {
                   if (vals.length > 4) {
-                    notification.warning({ message: "Maximum 4 k values allowed", description: "Remove one before adding another.", duration: 3 });
+                    setToolAlert({
+                      type: "warning",
+                      message: "Maximum 4 k values allowed",
+                      description: "Remove one before adding another.",
+                    });
                     return;
                   }
                   if (vals.length === 0) {
-                    notification.warning({ message: "At least one k value required", duration: 2 });
+                    setToolAlert({
+                      type: "warning",
+                      message: "At least one k value required",
+                    });
                     return;
                   }
+                  setToolAlert(null);
                   setSelectedKValues([...vals].sort((a, b) => a - b));
                 }}
                 style={{ minWidth: 220 }}
@@ -1479,9 +1525,11 @@ const MapCompare = () => {
                   type={isDirty ? "primary" : "default"}
                   icon={<BarChartOutlined />}
                   loading={kComparison.loading}
-                  onClick={() =>
-                    fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison)
-                  }
+                  onClick={() => {
+                    if (!requireUserDataIfSelected(mapStateAnonymized.filter, "run multi-k comparison")) return;
+                    setToolAlert(null);
+                    fetchKComparisonData(mapStateAnonymized.filter, gridSize, selectedKValues, setKComparison, setToolAlert);
+                  }}
                 >
                   {isDirty ? "Update Comparison" : "Re-fetch"}
                 </Button>

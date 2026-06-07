@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Alert, Button, Card, Col, Descriptions, notification, Popover, Progress,
-  Row, Space, Switch, Tag, Tooltip, Typography, Upload,
+  Alert, Button, Card, Col, Descriptions, Progress,
+  Row, Space, Switch, Table, Tag, Tooltip, Typography, Upload,
 } from 'antd';
 import {
-  CheckCircleOutlined, CloseCircleOutlined, DatabaseOutlined,
+  DatabaseOutlined,
   DeleteOutlined, DownloadOutlined, FileTextOutlined, InfoCircleOutlined,
-  QuestionCircleOutlined, ReloadOutlined, UploadOutlined, WarningOutlined,
+  QuestionCircleOutlined, ReloadOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import useDataSources from '../../hooks/useDataSources';
@@ -128,6 +128,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
   const [phase,         setPhase]         = useState('idle');
   const [xferPct,       setXferPct]       = useState(0);
   const [chunkProgress, setChunkProgress] = useState({ done: 0, total: 0 });
+  const [showSamples,   setShowSamples]   = useState(false);
   const [dataSource,    setDataSource]    = useState(
     localStorage.getItem(UPLOAD_DATA_SOURCE_KEY) || 'preloaded'
   );
@@ -169,10 +170,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
           // Delete finished or was interrupted while we were away.
           setDeleteProgress(null);
           setLiveUserCount(null);
-          if (data.status === 'done') {
-            notification.success({ message: 'Delete completed in background' });
-            fetchDataSources();
-          }
+          if (data.status === 'done') fetchDataSources();
         }
       } catch { /* ignore */ }
     };
@@ -252,11 +250,9 @@ const CSVUpload = ({ onDataSourceChange }) => {
       }));
 
       if (resuming) {
-        notification.info({
-          message: 'Resuming previous upload',
-          description: `${alreadyDone.length} of ${totalChunks} chunks already done — continuing from where it stopped.`,
-          icon: <InfoCircleOutlined style={{ color: '#1677ff' }} />,
-          duration: 4,
+        setUploadResult({
+          status: 'info',
+          message: `Resuming previous upload: ${alreadyDone.length} of ${totalChunks} chunks already completed.`,
         });
       }
 
@@ -294,20 +290,6 @@ const CSVUpload = ({ onDataSourceChange }) => {
       setFileList([]);
       fetchDataSources();
 
-      const inserted = Number(result.totalRecords || 0);
-      if (inserted === 0) {
-        notification.info({
-          message: 'No new records',
-          description: result.message || 'All rows were already in the database.',
-          icon: <InfoCircleOutlined style={{ color: '#1677ff' }} />,
-        });
-      } else {
-        notification.success({
-          message: `${inserted.toLocaleString()} records imported`,
-          description: result.message,
-          icon: <CheckCircleOutlined style={{ color: '#16a34a' }} />,
-        });
-      }
     } catch (error) {
       // Leave the file selected so the user can retry without re-picking it.
       setLiveUserCount(null);
@@ -320,20 +302,12 @@ const CSVUpload = ({ onDataSourceChange }) => {
       if (error.isValidation || status === 400) {
         // Validation errors are not resumable — the file itself is the problem.
         setIsInterrupted(false);
-        notification.warning({
-          message: 'Validation error',
-          description: apiMsg || 'The file did not pass validation. Check the required fields.',
-          icon: <WarningOutlined style={{ color: '#b45309' }} />,
-          duration: 8,
-        });
       } else {
         // Keep the session so the user can resume after a network or server error.
         setIsInterrupted(true);
-        notification.error({
-          message: 'Upload interrupted',
-          description: `${apiMsg} — use the Resume Upload button to continue from where it stopped.`,
-          icon: <CloseCircleOutlined style={{ color: '#dc2626' }} />,
-          duration: 10,
+        setUploadResult({
+          status: 'error',
+          message: `${apiMsg} — use the Resume Upload button to continue from where it stopped.`,
         });
       }
     }
@@ -347,6 +321,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
   };
 
   const handleDeleteUserData = async () => {
+    setUploadResult(null);
     setDeleteProgress({ deleted: 0, total: 0 });
     setDeleteServerStatus('running');
 
@@ -392,13 +367,14 @@ const CSVUpload = ({ onDataSourceChange }) => {
             } else if (event.type === 'done') {
               setDeleteProgress(null);
               setDeleteServerStatus('idle');
-              setLiveUserCount(null); // hand back to the real API count
-              notification.success({
+              setLiveUserCount(0);
+              setUploadResult({
+                status: 'success',
                 message: event.deleted > 0
-                  ? `Deleted ${event.deleted.toLocaleString()} user records`
-                  : 'No user data to delete',
+                  ? `Deleted ${event.deleted.toLocaleString()} user records.`
+                  : 'No user data to delete.',
               });
-              fetchDataSources();
+              await fetchDataSources();
               if (dataSource === 'user') {
                 setDataSource('preloaded');
                 localStorage.setItem(UPLOAD_DATA_SOURCE_KEY, 'preloaded');
@@ -417,26 +393,29 @@ const CSVUpload = ({ onDataSourceChange }) => {
       setDeleteProgress(null);
       setDeleteServerStatus('interrupted');
       setLiveUserCount(null); // restore real count on error
-      notification.error({ message: 'Failed to delete user data', description: err.message });
+      setUploadResult({ status: 'error', message: `Failed to delete user data: ${err.message}` });
     }
   };
 
-  const downloadSampleCSV = async () => {
-    try {
-      const response = await axios.get(`${API}/api/upload/sample-csv`, { responseType: 'blob' });
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
-      const url  = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'sample-bicycle-data.csv';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
-      notification.success({ message: 'Sample CSV downloaded' });
-    } catch {
-      notification.error({ message: 'Failed to download sample CSV' });
+  const handleSampleDownload = async (sample) => {
+    if (sample.source === 'backend') {
+      try {
+        const response = await axios.get(`${API}/api/upload/sample-csv?type=${sample.key}`, { responseType: 'blob' });
+        const url  = URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = sample.filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+      } catch {
+        setUploadResult({ status: 'error', message: `Failed to download ${sample.label} sample.` });
+      }
+      return;
     }
+
+    downloadCSV(sample.filename, sample.content);
   };
 
   // Dismiss the resume banner and forget the interrupted session entirely.
@@ -454,11 +433,11 @@ const CSVUpload = ({ onDataSourceChange }) => {
     },
     beforeUpload: (file) => {
       if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
-        notification.error({ message: 'Only CSV files are accepted' });
+        setUploadResult({ status: 'error', message: 'Only CSV files are accepted.' });
         return false;
       }
       if (file.size / 1024 / 1024 > 250) {
-        notification.error({ message: 'File must be smaller than 250 MB' });
+        setUploadResult({ status: 'error', message: 'File must be smaller than 250 MB.' });
         return false;
       }
       setFileList([file]);
@@ -471,10 +450,9 @@ const CSVUpload = ({ onDataSourceChange }) => {
       } else {
         // Warn when a different file would start a fresh upload.
         if (pendingSession && fileFingerprint(file) !== pendingSession.fileFingerprint) {
-          notification.warning({
-            message: 'Different file selected',
-            description: `The interrupted upload was "${pendingSession.fileName}". Selecting a different file will start a fresh upload — the previous session will remain paused and can still be resumed by re-selecting "${pendingSession.fileName}".`,
-            duration: 8,
+          setUploadResult({
+            status: 'warning',
+            message: `The interrupted upload was "${pendingSession.fileName}". Select that file again to resume, or continue with this file as a fresh upload.`,
           });
         }
         setIsInterrupted(false);
@@ -484,6 +462,10 @@ const CSVUpload = ({ onDataSourceChange }) => {
     fileList,
     customRequest: () => {},
     maxCount: 1,
+    showUploadList: {
+      showRemoveIcon: true,
+      removeIcon: <DeleteOutlined className="csv-upload-remove-icon" />,
+    },
   };
 
   // Auto-hide the progress bar a moment after the upload finishes.
@@ -495,11 +477,61 @@ const CSVUpload = ({ onDataSourceChange }) => {
 
   const isUploading    = phase === 'reading' || phase === 'transferring' || phase === 'processing';
   const isDeleting     = !!deleteProgress || deleteServerStatus === 'running';
+  const hasUserUploadedData = (liveUserCount ?? dataInfo.userUploaded ?? dataInfo.bounds?.user?.count ?? 0) > 0;
+  const uploadBlockedByExistingData = hasUserUploadedData && !isInterrupted;
   const progressPct    = phase === 'transferring' ? xferPct : PHASES[phase].percent;
   const progressStatus = phase === 'done' ? 'success' : phase === 'idle' ? 'normal' : 'active';
   const userBounds     = dataInfo?.bounds?.user;
   // True when the current state allows resuming rather than starting fresh.
   const isResumable    = isInterrupted;
+  const hasResultDetails = !!uploadResult && (
+    ['totalRows', 'totalRecords', 'duplicateCount', 'skippedRows'].some((key) => key in uploadResult) ||
+    (uploadResult.validationSummary && Object.values(uploadResult.validationSummary).some(Boolean))
+  );
+  const sampleTableColumns = [
+    {
+      title: 'Sample',
+      dataIndex: 'label',
+      width: 190,
+      render: (_, sample) => (
+        <Space direction="vertical" size={3}>
+          <Space size={6}>
+            <FileTextOutlined />
+            <Text strong>{sample.label}</Text>
+          </Space>
+          <Tag color={sample.tag} style={{ width: 'fit-content' }}>{sample.filename}</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: 'Best for',
+      dataIndex: 'description',
+      render: (description) => <Text type="secondary">{description}</Text>,
+    },
+    {
+      title: 'CSV fields',
+      dataIndex: 'columns',
+      render: (columns) => (
+        <Space size={[4, 4]} wrap>
+          {columns.split(/\s*(?:Â·|·)\s*/).map((column) => (
+            <Tag key={column} style={{ margin: 0, fontFamily: 'monospace' }}>
+              {column}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: '',
+      key: 'download',
+      width: 120,
+      render: (_, sample) => (
+        <Button size="small" icon={<DownloadOutlined />} onClick={() => handleSampleDownload(sample)}>
+          Download
+        </Button>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -551,66 +583,24 @@ const CSVUpload = ({ onDataSourceChange }) => {
               }
             />
 
-            <Popover
-              trigger="click"
-              placement="bottomLeft"
-              overlayStyle={{ width: 420 }}
-              title={
-                <Space>
-                  <DownloadOutlined />
-                  <span>Sample CSV Files</span>
-                </Space>
-              }
-              content={
-                <Space direction="vertical" style={{ width: '100%' }} size={10}>
-                  {SAMPLE_CSVS.map((s) => (
-                    <div key={s.key} style={{ borderBottom: '1px solid var(--app-border)', paddingBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <Space size={6}>
-                          <FileTextOutlined />
-                          <Text strong>{s.label}</Text>
-                          <Tag color={s.tag} style={{ margin: 0 }}>{s.filename}</Tag>
-                        </Space>
-                        <Button
-                          size="small"
-                          icon={<DownloadOutlined />}
-                          onClick={async () => {
-                            if (s.source === 'backend') {
-                              try {
-                                const resp = await axios.get(`${API}/api/upload/sample-csv?type=${s.key}`, { responseType: 'blob' });
-                                const url  = URL.createObjectURL(new Blob([resp.data], { type: 'text/csv' }));
-                                const link = document.createElement('a');
-                                link.href = url; link.download = s.filename; link.style.display = 'none';
-                                document.body.appendChild(link); link.click();
-                                setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
-                                notification.success({ message: `${s.label} sample downloaded` });
-                              } catch {
-                                notification.error({ message: `Failed to download ${s.label} sample` });
-                              }
-                            } else {
-                              downloadCSV(s.filename, s.content);
-                              notification.success({ message: `${s.label} sample downloaded` });
-                            }
-                          }}
-                        >
-                          Download
-                        </Button>
-                      </div>
-                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 3 }}>
-                        {s.description}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--app-muted)' }}>
-                        {s.columns}
-                      </Text>
-                    </div>
-                  ))}
-                </Space>
-              }
-            >
-              <Button icon={<DownloadOutlined />}>
-                Download Sample CSV
+            <Space direction="vertical" style={{ width: '100%' }} size={10}>
+              <Button icon={<DownloadOutlined />} onClick={() => setShowSamples((value) => !value)}>
+                {showSamples ? 'Hide Sample CSVs' : 'Download Sample CSV'}
               </Button>
-            </Popover>
+
+              {showSamples && (
+                <Card size="small" className="sample-csv-panel">
+                  <Table
+                    rowKey="key"
+                    size="small"
+                    pagination={false}
+                    columns={sampleTableColumns}
+                    dataSource={SAMPLE_CSVS}
+                    scroll={{ x: 760 }}
+                  />
+                </Card>
+              )}
+            </Space>
 
             {/* Resume banner — appears after a page refresh if a session is still alive */}
             {pendingSession && !isUploading && phase !== 'done' && (
@@ -631,11 +621,24 @@ const CSVUpload = ({ onDataSourceChange }) => {
             )}
 
             <Space direction="vertical" size={4}>
-              <Upload {...uploadProps} disabled={isUploading || isDeleting}>
-                <Button icon={<UploadOutlined />} disabled={isUploading || isDeleting}>
-                  Select CSV File
-                </Button>
-              </Upload>
+              <Tooltip
+                title={uploadBlockedByExistingData ? 'Clear existing user data before uploading another CSV.' : ''}
+              >
+                <span>
+                  <Upload
+                    {...uploadProps}
+                    className="csv-upload-control"
+                    disabled={isUploading || isDeleting || uploadBlockedByExistingData}
+                  >
+                    <Button
+                      icon={<UploadOutlined />}
+                      disabled={isUploading || isDeleting || uploadBlockedByExistingData}
+                    >
+                      Select CSV File
+                    </Button>
+                  </Upload>
+                </span>
+              </Tooltip>
               {fileList[0] && (
                 <Space size={6} style={{ paddingLeft: 2 }}>
                   <FileTextOutlined style={{ color: 'var(--app-muted)', fontSize: 13 }} />
@@ -664,7 +667,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
               <Button
                 type="primary"
                 onClick={handleUpload}
-                disabled={fileList.length === 0 || isUploading || isDeleting}
+                disabled={fileList.length === 0 || isUploading || isDeleting || uploadBlockedByExistingData}
                 loading={isUploading}
                 icon={<UploadOutlined />}
               >
@@ -701,12 +704,12 @@ const CSVUpload = ({ onDataSourceChange }) => {
 
             {uploadResult && (
               <Alert
-                type={uploadResult.status === 'success' ? 'success' : 'warning'}
+                type={['success', 'info', 'warning', 'error'].includes(uploadResult.status) ? uploadResult.status : 'warning'}
                 showIcon
                 closable
                 message={uploadResult.message}
                 description={
-                  <Descriptions size="small" column={2} style={{ marginTop: 8 }}>
+                  hasResultDetails ? <Descriptions size="small" column={2} style={{ marginTop: 8 }}>
                     {'totalRows' in uploadResult && (
                       <Descriptions.Item label="Rows read">{uploadResult.totalRows?.toLocaleString()}</Descriptions.Item>
                     )}
@@ -731,7 +734,7 @@ const CSVUpload = ({ onDataSourceChange }) => {
                         ].filter(Boolean).join(' · ')}
                       </Descriptions.Item>
                     )}
-                  </Descriptions>
+                  </Descriptions> : null
                 }
               />
             )}

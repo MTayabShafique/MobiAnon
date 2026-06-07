@@ -906,6 +906,20 @@ body {
   gap: 6px;
 }
 
+.csv-upload-control .ant-upload-list-item-actions,
+.csv-upload-control .ant-upload-list-item-action {
+  opacity: 1 !important;
+}
+
+.csv-upload-control .csv-upload-remove-icon,
+.csv-upload-control .ant-upload-list-item-action:hover .csv-upload-remove-icon {
+  color: #dc2626;
+}
+
+.csv-upload-control .ant-upload-list-item-action:hover {
+  background: rgba(220, 38, 38, 0.08);
+}
+
 .datasource-toggle-row {
   display: flex;
   align-items: center;
