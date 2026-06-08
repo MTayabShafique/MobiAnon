@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS trips (
   end_lat DECIMAL(10, 8),
   end_lng DECIMAL(11, 8),
   member_casual VARCHAR(50),
+  tripduration INT NULL,
+  bike_id VARCHAR(100) NULL,
+  gender VARCHAR(50) NULL,
+  birth_year SMALLINT NULL,
+  age_band VARCHAR(20) NULL,
   is_user_uploaded BOOLEAN DEFAULT FALSE
 );
 

@@ -320,6 +320,8 @@ const computeOriginalBaseline = (stops, gridSize) => {
   let memberCount = 0;
   let casualCount = 0;
   const rideableMap = {};
+  const genderMap = {};
+  const ageBandMap = {};
   const startCells  = new Set();
   const pairCounts  = {};
 
@@ -330,6 +332,13 @@ const computeOriginalBaseline = (stops, gridSize) => {
 
     const rt = s.details?.rideable_type || "unknown";
     rideableMap[rt] = (rideableMap[rt] || 0) + 1;
+
+    if (s.details?.gender) {
+      genderMap[s.details.gender] = (genderMap[s.details.gender] || 0) + 1;
+    }
+    if (s.details?.age_band) {
+      ageBandMap[s.details.age_band] = (ageBandMap[s.details.age_band] || 0) + 1;
+    }
 
     const sc = `${snap(s.start[0]).toFixed(4)},${snap(s.start[1]).toFixed(4)}`;
     const ec = `${snap(s.end[0]).toFixed(4)},${snap(s.end[1]).toFixed(4)}`;
@@ -345,6 +354,8 @@ const computeOriginalBaseline = (stops, gridSize) => {
     memberCount,
     casualCount,
     rideableMap,
+    genderMap,
+    ageBandMap,
     uniqueStartCells:  startCells.size,
     uniquePairs,
     reIdentifiablePct: (uniquePairs / total) * 100,
@@ -357,7 +368,7 @@ const OriginalTripsBaseline = ({ baseline, gridSize }) => {
   if (!baseline) return null;
 
   const {
-    total, memberCount, rideableMap,
+    total, memberCount, rideableMap, genderMap, ageBandMap,
     uniqueStartCells, uniquePairs,
     reIdentifiablePct, avgTripsPerCell,
   } = baseline;
@@ -366,6 +377,7 @@ const OriginalTripsBaseline = ({ baseline, gridSize }) => {
   const riskType  = reIdentifiablePct > 50 ? "error"
                   : reIdentifiablePct > 20 ? "warning"
                   :                          "success";
+  const hasDemographics = Object.keys(genderMap || {}).length > 0 || Object.keys(ageBandMap || {}).length > 0;
 
   return (
     <div className="original-baseline-panel">
@@ -449,6 +461,33 @@ const OriginalTripsBaseline = ({ baseline, gridSize }) => {
             </Space>
           </div>
         </Col>
+
+        {hasDemographics && (
+          <Col xs={24}>
+            <div className="baseline-row">
+              <Space size={4} style={{ marginBottom: 6 }}>
+                <UserOutlined className="baseline-row-icon" />
+                <span className="baseline-label">Demographics</span>
+              </Space>
+              <Space size={6} wrap>
+                {Object.entries(genderMap || {})
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([gender, count]) => (
+                    <Tag key={`gender-${gender}`} color="cyan" className="baseline-type-tag">
+                      {gender} {((count / total) * 100).toFixed(1)}%
+                    </Tag>
+                  ))}
+                {Object.entries(ageBandMap || {})
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([ageBand, count]) => (
+                    <Tag key={`age-${ageBand}`} color="magenta" className="baseline-type-tag">
+                      {ageBand} {((count / total) * 100).toFixed(1)}%
+                    </Tag>
+                  ))}
+              </Space>
+            </div>
+          </Col>
+        )}
 
         <Col xs={24}>
           <Alert
@@ -550,6 +589,8 @@ const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle, foot
                           <p><b>ID:</b> {stop.details.ride_id}</p>
                           <p><b>From:</b> {stop.details.start_station_name || "–"}</p>
                           <p><b>To:</b> {stop.details.end_station_name || "–"}</p>
+                          {stop.details.gender && <p><b>Gender:</b> {stop.details.gender}</p>}
+                          {stop.details.age_band && <p><b>Age band:</b> {stop.details.age_band}</p>}
                         </Popup>
                       </Polyline>
                     </>
@@ -735,6 +776,8 @@ const TEMPORAL_LABELS = {
 const SENSITIVE_ATTR_LABELS = {
   member_casual:    "Rider type",
   rideable_type:    "Bike type",
+  gender:           "Gender",
+  age_band:         "Age band",
   destination_area: "Destination area",
 };
 
@@ -742,6 +785,8 @@ const SENSITIVE_ATTR_LABELS = {
 const MAX_L_FOR_ATTR = {
   member_casual:    2,
   rideable_type:    3,
+  gender:           3,
+  age_band:         5,
   destination_area: 5,
 };
 
@@ -1100,6 +1145,8 @@ const MapCompare = () => {
               options={[
                 { value: "member_casual",    label: "Rider type (member / casual)" },
                 { value: "rideable_type",    label: "Bike type (classic / electric / docked)" },
+                { value: "gender",           label: "Gender (Hubway demographic)" },
+                { value: "age_band",         label: "Age band (from birth year)" },
                 { value: "destination_area", label: "Destination area (grid cell)" },
               ]}
             />

@@ -15,10 +15,11 @@ export const normalizeLimit = (limit) => {
 
 const buildTripQuery = ({ date, memberType, bounds, dataSource, limit, anonymizationOnly }) => {
   const selectFields = anonymizationOnly
-    ? 'start_lat, start_lng, end_lat, end_lng, ride_id, started_at, ended_at, member_casual, rideable_type'
+    ? 'start_lat, start_lng, end_lat, end_lng, ride_id, started_at, ended_at, member_casual, rideable_type, gender, age_band'
     : `ride_id, rideable_type, started_at, ended_at,
         start_station_name, start_lat, start_lng,
-        end_station_name, end_lat, end_lng, member_casual`;
+        end_station_name, end_lat, end_lng, member_casual,
+        tripduration, bike_id, gender, age_band`;
 
   let sql = `
     SELECT ${selectFields}

@@ -103,6 +103,15 @@ const SAMPLE_CSVS = [
     filename: 'JC-202605-citibike-tripdata.csv',
     source: 'backend',
   },
+  {
+    key: 'hubway',
+    label: 'Demographic (Hubway)',
+    tag: 'cyan',
+    description: 'Boston Hubway 2015 dataset — includes rider type, gender, birth year, bike IDs, trip duration, and station coordinates. Best for demographic ℓ-diversity demos with gender and age bands.',
+    columns: 'tripduration · starttime · stoptime · start station id · start station name · start station latitude · start station longitude · end station id · end station name · end station latitude · end station longitude · bikeid · usertype · birth year · gender',
+    filename: '201501-hubway-tripdata.csv',
+    source: 'backend',
+  },
 ];
 
 const downloadCSV = (filename, content) => {
@@ -526,7 +535,12 @@ const CSVUpload = ({ onDataSourceChange }) => {
       key: 'download',
       width: 120,
       render: (_, sample) => (
-        <Button size="small" icon={<DownloadOutlined />} onClick={() => handleSampleDownload(sample)}>
+        <Button
+          size="small"
+          className="sample-download-btn"
+          icon={<DownloadOutlined />}
+          onClick={() => handleSampleDownload(sample)}
+        >
           Download
         </Button>
       ),
@@ -551,8 +565,9 @@ const CSVUpload = ({ onDataSourceChange }) => {
             <div>
               <Title level={5} style={{ marginBottom: 4 }}>Upload Your Dataset</Title>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                Upload any bike-share or point-to-point mobility CSV. Citi Bike headers and common aliases
-                (start_time, start_latitude, start_lon, …) are auto-detected. Files up to 250 MB are accepted.
+                Upload any bike-share or point-to-point mobility CSV. Citi Bike, Divvy, and Hubway-style headers
+                (start_time, starttime, start_latitude, usertype, gender, birth year, …) are auto-detected.
+                Files up to 250 MB are accepted.
               </Paragraph>
             </div>
 

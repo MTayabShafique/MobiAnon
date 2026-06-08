@@ -234,6 +234,10 @@ const getSensitiveValue = (trip, sensitiveAttr, gridSize) => {
       return trip.member_casual ?? null;
     case 'rideable_type':
       return trip.rideable_type ?? null;
+    case 'gender':
+      return trip.gender ?? null;
+    case 'age_band':
+      return trip.age_band ?? null;
     case 'destination_area': {
       const eLat = toNumber(trip.end_lat);
       const eLng = toNumber(trip.end_lng);
@@ -418,6 +422,8 @@ const normalizeTrips = (trips, temporalGranularity, timezone = 'UTC') =>
       end_lng: toNumber(trip.end_lng) ?? null,
       member_casual: trip.member_casual ?? null,
       rideable_type: trip.rideable_type ?? null,
+      gender: trip.gender ?? null,
+      age_band: trip.age_band ?? null,
       started_at: trip.started_at,
       temporalBucket: getTemporalBucket(trip.started_at, temporalGranularity, timezone),
     }))

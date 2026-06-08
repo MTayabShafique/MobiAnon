@@ -22,6 +22,17 @@ const requiredColumns = [
   { field: "end_lat / end_lng",      purpose: "Trip end coordinates (decimal degrees)" },
 ];
 
+const optionalColumns = [
+  { field: "ride_id",        purpose: "Optional stable trip identifier; generated deterministically when missing" },
+  { field: "member_casual",  purpose: "Optional rider type; supports rider-type filtering and l-diversity" },
+  { field: "rideable_type",  purpose: "Optional bike type; supports bike-type l-diversity when present" },
+  { field: "gender",         purpose: "Optional Hubway-style demographic attribute; normalized from 0/1/2 or text values" },
+  { field: "birth_year",     purpose: "Optional demographic input; converted to age_band for privacy demonstrations" },
+  { field: "age_band",       purpose: "Derived optional field, e.g. 20-29 or 30-39; used instead of exact birth year in the Tool page" },
+  { field: "bike_id",        purpose: "Optional operational identifier stored for import completeness, not used as a release attribute" },
+  { field: "tripduration",   purpose: "Optional trip duration metadata from Hubway-style datasets" },
+];
+
 const aliasRows = [
   { internal: "started_at",    examples: "start_time, starttime, start_date, started, start_time_local" },
   { internal: "ended_at",      examples: "end_time, stoptime, end_date, ended, end_time_local" },
@@ -30,8 +41,12 @@ const aliasRows = [
   { internal: "end_lat",       examples: "end_latitude, to_lat, end station latitude, end_station_latitude" },
   { internal: "end_lng",       examples: "end_lon, end_longitude, to_lon, end station longitude" },
   { internal: "ride_id",       examples: "trip_id, rental_id, id; deterministic hash generated when missing" },
-  { internal: "member_casual", examples: "user_type, customer_type, membership_type, subscriber_type" },
+  { internal: "member_casual", examples: "user_type, usertype, customer_type, membership_type, subscriber_type" },
   { internal: "rideable_type", examples: "bike_type, vehicle_type, type" },
+  { internal: "gender",        examples: "gender, sex; Hubway numeric codes 1/2/0 become male/female/unknown" },
+  { internal: "birth_year",    examples: "birth year, birthyear, year_of_birth, year of birth" },
+  { internal: "bike_id",       examples: "bikeid, bike id, bike_number, vehicle_id" },
+  { internal: "tripduration",  examples: "tripduration, trip_duration, duration, duration_sec" },
 ];
 
 const metricRows = [
@@ -52,6 +67,8 @@ const metricRows = [
 const lDiversityAttrs = [
   { attr: "Rider type (member_casual)", values: "member, casual (2 values)",                    threat: "An adversary who knows the grid cell cannot infer whether the person is a commuter or tourist." },
   { attr: "Bike type (rideable_type)",  values: "classic_bike, electric_bike, docked_bike (up to 3)", threat: "Prevents inference of bike preference or accessibility device use." },
+  { attr: "Gender (gender)",            values: "male, female, unknown / text categories",      threat: "Prevents demographic attribute disclosure for Hubway-style datasets when gender is present." },
+  { attr: "Age band (age_band)",        values: "decade bands derived from birth_year",         threat: "Demonstrates age-related disclosure protection without releasing exact birth year." },
   { attr: "Destination area",           values: "Grid cell key derived from end_lat/end_lng",   threat: "Strongest protection: each group covers ≥ ℓ distinct destination neighbourhoods, blocking destination-inference attacks." },
 ];
 
@@ -59,10 +76,26 @@ const multiCityDatasets = [
   { provider: "Citi Bike (NYC)",           url: "citibikenyc.com/system-data",         format: "Standard Citi Bike CSV (all fields)" },
   { provider: "Divvy (Chicago)",           url: "divvybikes.com/system-data",           format: "starttime/stoptime aliases auto-detected" },
   { provider: "Bluebikes (Boston)",        url: "bluebikes.com/system-data",            format: "start_time / end_time aliases auto-detected" },
+  { provider: "Hubway (Boston legacy)",     url: "bluebikes.com/system-data",            format: "starttime/stoptime plus optional gender, birth year, bikeid, tripduration" },
   { provider: "Capital Bikeshare (DC)",    url: "capitalbikeshare.com/system-data",     format: "start_time / end_time aliases" },
   { provider: "Santander Cycles (London)", url: "tfl.gov.uk/info-for/open-data-users",  format: "StartDate / EndDate (may need column rename)" },
   { provider: "Custom dataset",            url: "n/a",                                  format: "Any CSV with the 6 required coordinate and timestamp fields" },
 ];
+
+const getOpenDataHref = (url) => {
+  if (!url || url === "n/a") return null;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+};
+
+const renderOpenDataUrl = (url) => {
+  const href = getOpenDataHref(url);
+  if (!href) return <Text type="secondary">n/a</Text>;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {url}
+    </a>
+  );
+};
 
 const epsilonRows = [
   { eps: "ε = 10",  scale: "gridSize / 10 ≈ 110 m",   label: "Very weak: barely detectable noise" },
@@ -444,7 +477,7 @@ const STEP_DESCRIPTIONS = {
     "The server returns a unique sessionId and the index of the first chunk to upload (0 for a new upload, N for a resume).",
     "The file contents are read locally and split into chunks of 5,000 rows each.",
     "The first chunk is posted as a multipart payload to /session/:sessionId/chunk.",
-    "uploadRoute parses the chunk rows, strips the BOM if present, and maps column aliases to internal field names.",
+    "uploadRoute parses the chunk rows, strips the BOM if present, maps column aliases to internal field names, and normalizes optional Hubway demographic fields.",
     "The validated rows are written to MySQL using INSERT IGNORE and the route returns inserted and duplicate counts.",
     "Express acknowledges the chunk; the progress bar advances proportionally.",
     "CSVUpload repeats the chunk upload for every remaining chunk, using exponential backoff (3 attempts, 1.5 s intervals) on any network error.",
@@ -724,7 +757,7 @@ function GettingStartedTab() {
         <Col xs={24} xl={14}>
           <Card title={<Space><UploadOutlined /> Uploading a Dataset</Space>} className="guide-card">
             <Steps direction="vertical" size="small" items={[
-              { title: "Prepare a mobility CSV",       description: "The file must contain trip start/end timestamps and coordinates. Citi Bike headers and common aliases are auto-detected. Use the Download Sample CSV button to get a template with the correct column names." },
+              { title: "Prepare a mobility CSV",       description: "The file must contain trip start/end timestamps and coordinates. Citi Bike, Divvy, Bluebikes/Hubway headers and common aliases are auto-detected. Use the Download Sample CSV table to get a core template or the Hubway demographic sample." },
               { title: "Open the Upload Data page",    description: "Files up to 250 MB are accepted. Drag-and-drop or click to browse." },
               { title: "Session starts automatically", description: "The uploader fingerprints your file and calls /session/start to get a session ID. If a previous upload was interrupted, the resume banner appears and lets you continue from the last completed chunk." },
               { title: "Chunked transfer with retry",  description: "Your file is split into 5,000-row chunks. Each chunk is posted individually to /session/:id/chunk and retried up to 3 times with exponential backoff on any network error." },
@@ -739,6 +772,20 @@ function GettingStartedTab() {
               columns={[{ title: "Field", dataIndex: "field", width: 200 }, { title: "Purpose", dataIndex: "purpose" }]} />
             <Alert style={{ marginTop: 12 }} type="info" showIcon message="ride_id is optional"
               description="When missing, the importer generates a deterministic SHA-1 hash from coordinates and timestamps. Uploading the same file twice will not create duplicates." />
+            <Alert style={{ marginTop: 12 }} type="success" showIcon message="Demographic fields are optional"
+              description="Hubway-style gender, birth year, bike ID, and trip duration columns are supported when present. They are not required for upload; birth year is converted into age bands for privacy demonstrations." />
+          </Card>
+        </Col>
+        <Col span={24}>
+          <Card title={<Space><InfoCircleOutlined /> Core vs Optional Fields</Space>} className="guide-card">
+            <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              Core fields are required for map rendering and anonymization. Optional fields enrich the demonstrator and unlock additional l-diversity attributes when available.
+            </Paragraph>
+            <Table size="small" pagination={false} dataSource={optionalColumns} rowKey="field"
+              columns={[
+                { title: "Optional field", dataIndex: "field", width: 180 },
+                { title: "How it is used", dataIndex: "purpose" },
+              ]} />
           </Card>
         </Col>
         <Col span={24}>
@@ -761,7 +808,7 @@ function GettingStartedTab() {
             <Table size="small" pagination={false} dataSource={multiCityDatasets} rowKey="provider"
               columns={[
                 { title: "Provider",            dataIndex: "provider", width: 220 },
-                { title: "Open data URL",       dataIndex: "url" },
+                { title: "Open data URL",       dataIndex: "url", render: renderOpenDataUrl },
                 { title: "Column format notes", dataIndex: "format" },
               ]} />
           </Card>
@@ -780,7 +827,7 @@ function UsingTheToolTab() {
             <Timeline items={[
               { color: "blue",    children: "Choose Preloaded or User Data. Preloaded is January 2024 Citi Bike (NYC); uploaded data can come from any city." },
               { color: "blue",    children: "Set member type, grid size, k value, and temporal privacy mode. Hover any control's ? icon for an inline explanation." },
-              { color: "purple",  children: "Optionally enable ℓ-Diversity and choose a sensitive attribute. A warning appears if the member type filter conflicts with the chosen attribute." },
+              { color: "purple",  children: "Optionally enable ℓ-Diversity and choose a sensitive attribute: rider type, bike type, destination area, or Hubway gender/age band when those optional columns are present. A warning appears if the member type filter conflicts with the chosen attribute." },
               { color: "volcano", children: "Optionally enable ε-DP noise and choose ε. Smaller ε = more noise = stronger privacy but larger centroid displacement." },
               { color: "green",   children: "Click Load Original to inspect raw trip paths, then Run Anonymization to generate released centroids and heat intensity." },
               { color: "green",   children: "Click Compare k Values to run multiple k values side-by-side. All active settings (ℓ, ε) apply to every comparison column." },
@@ -805,7 +852,7 @@ function UsingTheToolTab() {
               </div>
               <div className="guide-control-row">
                 <Tag color="purple" icon={<SafetyOutlined />}>ℓ-Diversity</Tag>
-                <Text>Extends k-anonymity: each released group must contain ≥ ℓ distinct values of the chosen sensitive attribute. Prevents attribute-inference attacks. Set to Off to use plain k-anonymity.</Text>
+                <Text>Extends k-anonymity: each released group must contain ≥ ℓ distinct values of the chosen sensitive attribute. Rider type and destination area are broadly available; gender and age band are optional Hubway-style enrichments. Set to Off to use plain k-anonymity.</Text>
               </div>
               <div className="guide-control-row">
                 <Tag color="orange" icon={<NodeIndexOutlined />}>ε-DP Noise</Tag>
@@ -827,7 +874,7 @@ function UsingTheToolTab() {
   --csv=your-file.csv \\
   --sampleSizes=1000,5000 \\
   --lValues=1,2,3 \\
-  --sensitiveAttrs=member_casual,destination_area \\
+  --sensitiveAttrs=member_casual,gender,age_band,destination_area \\
   --epsilonValues=Infinity,5,2,1`}
               </pre>
               <Text type="secondary">Sweeps k-anonymity, ℓ-diversity, and ε-DP in one pass and writes timestamped JSON + CSV results.</Text>
@@ -886,6 +933,8 @@ function PrivacyTab() {
                   <strong>ℓ-diversity</strong> (Machanavajjhala et al., 2006) addresses a weakness of plain k-anonymity:
                   even when a released group contains k trips, all trips might share the same sensitive attribute value,
                   making inference trivial. ℓ-diversity requires at least ℓ <em>distinct</em> values per group.
+                  Supported attributes include rider type, bike type, destination area, and optional Hubway
+                  demographic fields such as gender and age band when those columns exist in the uploaded CSV.
                 </Paragraph>
                 <Table size="small" pagination={false} dataSource={lDiversityAttrs} rowKey="attr"
                   columns={[
@@ -907,6 +956,8 @@ function PrivacyTab() {
                     } />
                   <Alert type="info" showIcon message="Destination area is the strongest attribute"
                     description="It protects against destination-inference attacks. Because destination grid cells are numerous, ℓ=2 or ℓ=3 is achievable with minimal extra suppression compared to rider or bike type." />
+                  <Alert type="success" showIcon message="Hubway demographics are optional"
+                    description="Gender and age band appear only when uploaded data provides those columns. Exact birth year is used only to derive age bands; the Tool page uses age_band rather than exposing exact birth year as a sensitive-attribute option." />
                 </Space>
               </Col>
             </Row>
@@ -1062,8 +1113,8 @@ function ArchitectureTab() {
             <Space direction="vertical" size={6}>
               {[
                 { name: "bicycleRoute.js",   desc: "REST endpoints: /trips (raw), /anonymize, /compare, /stats." },
-                { name: "uploadRoute.js",    desc: "Session-based chunked upload (/session/start, /chunk, /complete), alias mapping, BOM stripping, coordinate validation, and SSE-streamed delete progress." },
-                { name: "anonymization.js",  desc: "Merge-nearest k-anonymity, ℓ-diversity attribute checking, and Laplace ε-DP noise." },
+                { name: "uploadRoute.js",    desc: "Session-based chunked upload (/session/start, /chunk, /complete), alias mapping, BOM stripping, coordinate validation, Hubway demographic normalization, and SSE-streamed delete progress." },
+                { name: "anonymization.js",  desc: "Merge-nearest k-anonymity, ℓ-diversity checks for rider, bike, demographic, and destination attributes, plus Laplace ε-DP noise." },
                 { name: "bicycleTrips.js",   desc: "MySQL query layer handling trip retrieval, date filtering, and user vs. preloaded data separation." },
               ].map(c => (
                 <div key={c.name}>
@@ -1083,6 +1134,10 @@ function ArchitectureTab() {
                 "ride_id VARCHAR(255): primary key, deterministic hash when absent",
                 "started_at / ended_at: DATETIME, indexed for date-range queries",
                 "start_lat/lng + end_lat/lng: DECIMAL(10,8) / (11,8)",
+                "member_casual / rideable_type: optional categorical attributes",
+                "gender / age_band: optional Hubway demographic attributes for l-diversity",
+                "birth_year: optional source value used to derive age_band, not exposed in Tool-page releases",
+                "bike_id / tripduration: optional Hubway metadata stored for import completeness",
                 "is_user_uploaded BOOLEAN: separates preloaded from user data",
               ].map(f => <Text key={f} type="secondary" style={{ fontSize: 12, display: "block" }}>• {f}</Text>)}
               <Text strong style={{ fontSize: 13, marginTop: 6, display: "block" }}>Upload Pipeline</Text>
@@ -1221,7 +1276,7 @@ function AlgorithmsTab() {
             <Row gutter={16} style={{ marginTop: 16 }}>
               {[
                 { color: "#a855f7", title: "Layer 1: k-Anonymity", body: "Always on. Groups trips into cells of ≥ k, releases only centroids. Guarantees zero individual-trip leakage." },
-                { color: "#3b82f6", title: "Layer 2: ℓ-Diversity", body: "Optional (ℓ ≥ 2). Enforces ≥ ℓ distinct sensitive-attribute values per released group. Prevents attribute-inference attacks." },
+                { color: "#3b82f6", title: "Layer 2: ℓ-Diversity", body: "Optional (ℓ ≥ 2). Enforces ≥ ℓ distinct sensitive-attribute values per released group. Works with rider type, bike type, destination area, and optional Hubway gender/age-band fields." },
                 { color: "#f97316", title: "Layer 3: ε-DP Noise",  body: "Optional (ε < ∞). Adds Laplace noise to centroids and counts. Provides a formal (ε, 0)-DP semantic guarantee." },
               ].map(l => (
                 <Col xs={24} md={8} key={l.title}>
@@ -1317,7 +1372,7 @@ function AlgorithmsTab() {
                 <Text strong style={{ display: "block", marginBottom: 8 }}>How it works</Text>
                 <Paragraph>
                   After k-anonymity completes, each group is checked for <strong>attribute
-                  diversity</strong>. The sensitive attribute (rider type, bike type, or destination area)
+                  diversity</strong>. The sensitive attribute (rider type, bike type, gender, age band, or destination area)
                   must appear in at least <strong>ℓ distinct values</strong> within every released group.
                 </Paragraph>
                 <Paragraph>
@@ -1349,6 +1404,8 @@ function AlgorithmsTab() {
                   {[
                     { attr: "member_casual", vals: "member, casual", strength: "Basic", color: "#3b82f6", note: "Prevents rider-type inference. Conflicts with member-only filter." },
                     { attr: "rideable_type",  vals: "classic, electric, docked", strength: "Medium", color: "#22c55e", note: "Prevents bike-preference / accessibility inference." },
+                    { attr: "gender", vals: "male, female, unknown", strength: "Demographic", color: "#06b6d4", note: "Optional Hubway field. Prevents gender inference when enough categories exist in the selected data." },
+                    { attr: "age_band", vals: "decade age ranges", strength: "Demographic", color: "#db2777", note: "Derived from birth_year. Demonstrates age disclosure protection without releasing exact birth year." },
                     { attr: "destination_area", vals: "grid cell of end coords", strength: "Strongest", color: "#f97316", note: "Blocks destination-inference. Many distinct values → low suppression cost." },
                   ].map(a => (
                     <div key={a.attr} className="guide-concept-box" style={{ borderColor: a.color }}>

@@ -14,6 +14,29 @@ const router = express.Router();
 const SESSION_DIR = path.join(process.cwd(), 'uploads', 'sessions');
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
 
+const OPTIONAL_TRIP_COLUMNS = [
+  { name: 'tripduration', definition: 'INT NULL' },
+  { name: 'bike_id',      definition: 'VARCHAR(100) NULL' },
+  { name: 'gender',       definition: 'VARCHAR(50) NULL' },
+  { name: 'birth_year',   definition: 'SMALLINT NULL' },
+  { name: 'age_band',     definition: 'VARCHAR(20) NULL' },
+];
+
+const ensureTripMetadataColumns = async () => {
+  for (const column of OPTIONAL_TRIP_COLUMNS) {
+    const [existing] = await pool.query('SHOW COLUMNS FROM trips LIKE ?', [column.name]);
+    if (existing.length === 0) {
+      await pool.query(`ALTER TABLE trips ADD COLUMN ${column.name} ${column.definition}`);
+    }
+  }
+};
+
+let tripMetadataColumnsError = null;
+const tripMetadataColumnsReady = ensureTripMetadataColumns().catch((err) => {
+  tripMetadataColumnsError = err;
+  console.error('trip metadata column init error:', err.message);
+});
+
 // Track delete jobs so the UI can resume or poll after a restart.
 
 (async () => {
@@ -358,6 +381,10 @@ const EXPECTED_CSV_COLUMNS = [
   'end_lat',
   'end_lng',
   'member_casual',
+  'tripduration',
+  'bike_id',
+  'gender',
+  'birth_year',
 ];
 
 const COLUMN_ALIASES = {
@@ -373,7 +400,11 @@ const COLUMN_ALIASES = {
   start_lng: ['start_lng', 'start lng', 'start_lon', 'start lon', 'start_longitude', 'start longitude', 'from_lng', 'from longitude', 'from_lon', 'start station longitude', 'start_station_longitude'],
   end_lat: ['end_lat', 'end lat', 'end_latitude', 'end latitude', 'to_lat', 'to latitude', 'end station latitude', 'end_station_latitude'],
   end_lng: ['end_lng', 'end lng', 'end_lon', 'end lon', 'end_longitude', 'end longitude', 'to_lng', 'to longitude', 'to_lon', 'end station longitude', 'end_station_longitude'],
-  member_casual: ['member_casual', 'member casual', 'user_type', 'user type', 'subscriber_type', 'customer_type', 'membership_type'],
+  member_casual: ['member_casual', 'member casual', 'user_type', 'user type', 'usertype', 'subscriber_type', 'customer_type', 'membership_type'],
+  tripduration: ['tripduration', 'trip_duration', 'trip duration', 'duration', 'duration_sec', 'duration seconds'],
+  bike_id: ['bike_id', 'bike id', 'bikeid', 'bike_number', 'bike number', 'vehicle_id', 'vehicle id'],
+  gender: ['gender', 'sex'],
+  birth_year: ['birth_year', 'birth year', 'birthyear', 'year_of_birth', 'year of birth', 'birth_date', 'birth date'],
 };
 
 const normalizeColumnName = (value) =>
@@ -401,6 +432,61 @@ const getMappedValue = (row, columnMap, field) => {
   const column = columnMap?.[field];
   const value = column ? row[column] : undefined;
   return typeof value === 'string' ? value.trim() : value;
+};
+
+const nullIfEmpty = (value) => {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (!text || ['\\n', '\\N', 'null', 'undefined', 'na', 'n/a'].includes(text.toLowerCase())) return null;
+  return text;
+};
+
+const normalizeMemberType = (value) => {
+  const text = nullIfEmpty(value);
+  if (!text) return 'unknown';
+  const normalized = text.toLowerCase().replace(/[\s_-]+/g, '');
+  if (['member', 'subscriber', 'subscribers'].includes(normalized)) return 'member';
+  if (['casual', 'customer', 'customers'].includes(normalized)) return 'casual';
+  return text.toLowerCase();
+};
+
+const normalizeGender = (value) => {
+  const text = nullIfEmpty(value);
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  if (['1', 'm', 'male'].includes(normalized)) return 'male';
+  if (['2', 'f', 'female'].includes(normalized)) return 'female';
+  if (['0', 'u', 'unknown'].includes(normalized)) return 'unknown';
+  return normalized;
+};
+
+const getRideYear = (startedAt) => {
+  const normalized = startedAt?.includes('T') ? startedAt : startedAt?.replace(' ', 'T');
+  const year = normalized ? new Date(normalized).getFullYear() : NaN;
+  return Number.isFinite(year) ? year : null;
+};
+
+const normalizeBirthYear = (value, startedAt) => {
+  const text = nullIfEmpty(value);
+  if (!text) return { birthYear: null, ageBand: null };
+  const birthYear = parseInt(text, 10);
+  const rideYear = getRideYear(startedAt);
+  if (!Number.isInteger(birthYear) || !rideYear) return { birthYear: null, ageBand: null };
+
+  const age = rideYear - birthYear;
+  if (age < 10 || age > 100) return { birthYear: null, ageBand: null };
+  if (age < 18) return { birthYear, ageBand: 'under_18' };
+  if (age >= 80) return { birthYear, ageBand: '80_plus' };
+
+  const decadeStart = Math.floor(age / 10) * 10;
+  return { birthYear, ageBand: `${decadeStart}-${decadeStart + 9}` };
+};
+
+const normalizeDuration = (value) => {
+  const text = nullIfEmpty(value);
+  if (!text) return null;
+  const duration = parseInt(text, 10);
+  return Number.isInteger(duration) && duration >= 0 ? duration : null;
 };
 
 const createValidationSummary = () => ({
@@ -493,37 +579,46 @@ const normalizeUploadedTrip = (row, columnMap, rowNumber, validationSummary) => 
 
   // Prefer the source ride_id when present; otherwise hash stable trip fields for deduplication.
   const finalRideId = explicitRideId || tripContentHash(startedAt, startLat, startLng, endLat, endLng);
+  const { birthYear, ageBand } = normalizeBirthYear(getMappedValue(row, columnMap, 'birth_year'), startedAt);
 
   return {
     status: 'valid',
     trip: [
       finalRideId,
-      getMappedValue(row, columnMap, 'rideable_type') || null,
+      nullIfEmpty(getMappedValue(row, columnMap, 'rideable_type')),
       startedAt,
       endedAt,
-      getMappedValue(row, columnMap, 'start_station_name') || null,
-      getMappedValue(row, columnMap, 'start_station_id') || null,
-      getMappedValue(row, columnMap, 'end_station_name') || null,
-      getMappedValue(row, columnMap, 'end_station_id') || null,
+      nullIfEmpty(getMappedValue(row, columnMap, 'start_station_name')),
+      nullIfEmpty(getMappedValue(row, columnMap, 'start_station_id')),
+      nullIfEmpty(getMappedValue(row, columnMap, 'end_station_name')),
+      nullIfEmpty(getMappedValue(row, columnMap, 'end_station_id')),
       startLat,
       startLng,
       endLat,
       endLng,
-      getMappedValue(row, columnMap, 'member_casual') || 'unknown',
+      normalizeMemberType(getMappedValue(row, columnMap, 'member_casual')),
       true,
+      normalizeDuration(getMappedValue(row, columnMap, 'tripduration')),
+      nullIfEmpty(getMappedValue(row, columnMap, 'bike_id')),
+      normalizeGender(getMappedValue(row, columnMap, 'gender')),
+      birthYear,
+      ageBand,
     ],
   };
 };
 
 const insertTripChunk = async (chunk) => {
   if (chunk.length === 0) return { inserted: 0, duplicates: 0 };
+  await tripMetadataColumnsReady;
+  if (tripMetadataColumnsError) throw tripMetadataColumnsError;
 
   // INSERT IGNORE preserves existing trips and skips duplicate ride_id values.
   const query = `
     INSERT IGNORE INTO trips (
       ride_id, rideable_type, started_at, ended_at, start_station_name,
       start_station_id, end_station_name, end_station_id, start_lat, start_lng,
-      end_lat, end_lng, member_casual, is_user_uploaded
+      end_lat, end_lng, member_casual, is_user_uploaded, tripduration,
+      bike_id, gender, birth_year, age_band
     ) VALUES ?
   `;
 
@@ -925,13 +1020,14 @@ const SAMPLES_DIR = path.join(process.cwd(), 'samples');
 const SAMPLE_FILES = {
   standard: '202004-divvy-tripdata.csv',
   extended: 'JC-202605-citibike-tripdata.csv',
+  hubway: '201501-hubway-tripdata.csv',
 };
 
 router.get('/sample-csv', (req, res) => {
   const type = req.query.type;
 
-  // Serve a real file for standard / extended.
-  if (type === 'standard' || type === 'extended') {
+  // Serve real sample files from disk.
+  if (SAMPLE_FILES[type]) {
     const filename = SAMPLE_FILES[type];
     const filepath = path.join(SAMPLES_DIR, filename);
 

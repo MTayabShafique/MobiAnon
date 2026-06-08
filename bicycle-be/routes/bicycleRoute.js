@@ -108,7 +108,7 @@ router.get('/trips/anonymized', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Invalid l value' });
     }
 
-    const allowedSensitiveAttrs = new Set(['none', 'member_casual', 'rideable_type', 'destination_area']);
+    const allowedSensitiveAttrs = new Set(['none', 'member_casual', 'rideable_type', 'gender', 'age_band', 'destination_area']);
     const sensitiveAttrValue = sensitiveAttr || 'none';
     if (!allowedSensitiveAttrs.has(sensitiveAttrValue)) {
       return res.status(400).json({ status: 'error', message: 'Invalid sensitiveAttr value' });

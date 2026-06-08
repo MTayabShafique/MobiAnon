@@ -913,11 +913,30 @@ body {
 
 .csv-upload-control .csv-upload-remove-icon,
 .csv-upload-control .ant-upload-list-item-action:hover .csv-upload-remove-icon {
-  color: #dc2626;
+  color: #dc2626 !important;
+  font-size: 15px;
 }
 
-.csv-upload-control .ant-upload-list-item-action:hover {
-  background: rgba(220, 38, 38, 0.08);
+.csv-upload-control .ant-upload-list-item-action {
+  border-radius: 6px;
+}
+
+.csv-upload-control .ant-upload-list-item-action:hover,
+.csv-upload-control .ant-upload-list-item-action:focus-visible {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626 !important;
+}
+
+.sample-download-btn,
+.sample-download-btn:hover,
+.sample-download-btn:focus-visible {
+  border-color: #16a34a !important;
+  color: #16a34a !important;
+}
+
+.sample-download-btn:hover,
+.sample-download-btn:focus-visible {
+  background: rgba(22, 163, 74, 0.08) !important;
 }
 
 .datasource-toggle-row {
