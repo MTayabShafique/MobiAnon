@@ -1,18 +1,28 @@
-# Mobility Privacy Demonstrator
+# MobiAnon: Mobility Privacy Demonstrator
 
-This project is a full-stack React, Express, and MySQL demonstrator for exploring explainable k-anonymity on mobility trip data. It compares original trip records with anonymized spatial-temporal releases and reports privacy/utility metrics such as k-violations, suppression, spatial error, density similarity, and hotspot overlap.
+MobiAnon is a full-stack React, Express, and MySQL demonstrator for exploring explainable privacy protection on point-to-point mobility trip data. It compares original trip records with anonymized releases and reports privacy/utility metrics such as k-violations, l-diversity violations, suppression, spatial error, density similarity, hotspot overlap, and backend timing.
+
+The project is designed as a research/demo tool, not a production anonymization framework. Its main goal is to make privacy-utility tradeoffs visible through maps, controls, metrics, upload workflows, sample data, benchmark scripts, and an interactive 3D privacy-utility landscape.
 
 The project supports:
 
 - Original vs anonymized map comparison.
-- Spatial and spatial-temporal k-anonymity.
-- Multi-k comparison for k=5, k=10, and k=20.
-- Upload of Citi Bike-style or similar mobility CSV files.
+- Spatial and spatio-temporal k-anonymity.
+- Temporal privacy modes: spatial-only, day, period, and hour.
+- Optional l-diversity for rider type, bike type, destination area, gender, and age band.
+- Optional epsilon-DP-style Laplace noise on released centroids and counts.
+- Multi-k comparison for selected k values.
+- Upload of Citi Bike, Divvy, Hubway/Bluebikes-style, or similar mobility CSV files.
 - Global latitude/longitude validation instead of NYC-only uploads.
-- Streaming chunk import for larger CSV uploads.
+- Resumable 5,000-row chunk upload with retry.
+- Clear-all-user-data workflow with streamed delete progress.
+- Downloadable minimal, Divvy, Citi Bike, and Hubway sample CSVs.
+- Optional Hubway-style metadata: `tripduration`, `bike_id`, `gender`, `birth_year`, and derived `age_band`.
+- Dynamic data-source bounds and date ranges for uploaded datasets.
 - Light/dark UI themes for demos and screenshots.
+- Interactive 3D privacy-utility landscape for k-anonymity, l-diversity, and epsilon-DP scenarios.
 - Benchmark scripts and paper-ready report/figure generation.
-- Suppression-only baseline comparison against the merge-nearest anonymization method.
+- Suppression-only and fixed-grid baseline comparison against the merge-nearest anonymization method.
 
 ## Reproducibility
 
@@ -50,12 +60,14 @@ http://localhost:5000
 | --- | --- |
 | `src/components/Map/MapCompare.jsx` | Main comparison UI |
 | `src/components/Upload/CSVUpload.jsx` | CSV upload/data-source UI |
+| `src/components/Viz3D/PrivacyLandscape.jsx` | Interactive 3D privacy-utility landscape |
 | `src/pages/Guide.jsx` | In-app user guide |
 | `bicycle-be/routes/bicycleRoute.js` | Trip/anonymization API routes |
-| `bicycle-be/routes/uploadRoute.js` | Streaming CSV upload API |
-| `bicycle-be/services/anonymization.js` | k-anonymity and baseline methods |
+| `bicycle-be/routes/uploadRoute.js` | CSV upload, sample download, source metadata, and delete API |
+| `bicycle-be/services/anonymization.js` | k-anonymity, l-diversity, DP noise, metrics, and baseline methods |
 | `bicycle-be/scripts/evaluateAnonymization.js` | Offline anonymization benchmark |
 | `bicycle-be/scripts/generateBenchmarkReport.js` | Paper report/figure generation |
+| `bicycle-be/scripts/benchmarkDbQueries.js` | Live database query benchmark |
 | `bicycle-be/db/create-trips-table.sql` | Clean MySQL schema setup |
 | `bicycle-be/db/performance-indexes.sql` | Live query performance indexes |
 | `bicycle-be/paper-results/` | Generated paper-facing reports and figures |
@@ -72,3 +84,10 @@ npm run report:db
 ```
 
 On managed Windows laptops, `npm run build` may need to be run in a normal terminal if a sandbox blocks the esbuild worker process.
+
+## Scope Notes
+
+- The app expects point-to-point trips with start/end timestamps and coordinates.
+- Station-ID-only data, zone-only data, and full GPS trajectories need preprocessing before import.
+- The epsilon-DP layer is a per-query demonstrator mechanism and does not include full privacy accounting across repeated API calls.
+- Authentication components exist in the codebase, but the main Tool, Upload, and Guide routes are currently public.
