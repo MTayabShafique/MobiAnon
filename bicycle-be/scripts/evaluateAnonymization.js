@@ -46,6 +46,30 @@ const columnAliases = {
   end_lng:       ['end_lng', 'end lng', 'end_lon', 'end lon', 'end_longitude', 'end longitude', 'to_lng', 'to longitude', 'to_lon', 'end station longitude', 'end_station_longitude'],
   member_casual: ['member_casual', 'member casual', 'user_type', 'usertype', 'customer_type', 'membership_type', 'subscriber_type'],
   rideable_type: ['rideable_type', 'rideable type', 'bike_type', 'bike type', 'vehicle_type', 'type'],
+  gender:        ['gender', 'sex'],
+  birth_year:    ['birth_year', 'birth year', 'birthyear', 'year_of_birth', 'year of birth'],
+};
+
+const normalizeGender = (value) => {
+  const text = value?.toString().trim().toLowerCase();
+  if (!text) return null;
+  if (['1', 'm', 'male'].includes(text)) return 'male';
+  if (['2', 'f', 'female'].includes(text)) return 'female';
+  if (['0', 'u', 'unknown'].includes(text)) return 'unknown';
+  return text;
+};
+
+const deriveAgeBand = (birthYearRaw, startedAt) => {
+  const birthYear = parseInt(birthYearRaw, 10);
+  if (!Number.isInteger(birthYear)) return null;
+  const rideYear = startedAt ? new Date(startedAt.replace(' ', 'T')).getFullYear() : NaN;
+  if (isNaN(rideYear)) return null;
+  const age = rideYear - birthYear;
+  if (age < 10 || age > 100) return null;
+  if (age < 18) return 'under_18';
+  if (age >= 80) return '80_plus';
+  const decadeStart = Math.floor(age / 10) * 10;
+  return `${decadeStart}-${decadeStart + 9}`;
 };
 
 const normalizeColumnName = (value) =>
@@ -71,15 +95,20 @@ const readTrips = async () => {
       .pipe(csvParser())
       .on('data', (row) => {
         if (trips.length >= rowLimit) return;
+        const startedAt = getAliasedValue(row, 'started_at');
+        const birthYearRaw = getAliasedValue(row, 'birth_year');
         trips.push({
           ride_id:       getAliasedValue(row, 'ride_id') || `benchmark-${trips.length + 1}`,
-          started_at:    getAliasedValue(row, 'started_at'),
+          started_at:    startedAt,
           start_lat:     getAliasedValue(row, 'start_lat'),
           start_lng:     getAliasedValue(row, 'start_lng'),
           end_lat:       getAliasedValue(row, 'end_lat'),
           end_lng:       getAliasedValue(row, 'end_lng'),
           member_casual: getAliasedValue(row, 'member_casual'),
           rideable_type: getAliasedValue(row, 'rideable_type'),
+          gender:        normalizeGender(getAliasedValue(row, 'gender')),
+          birth_year:    birthYearRaw ? parseInt(birthYearRaw, 10) : null,
+          age_band:      deriveAgeBand(birthYearRaw, startedAt),
         });
       })
       .on('end', resolve)

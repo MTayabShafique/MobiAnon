@@ -511,6 +511,251 @@ const OriginalTripsBaseline = ({ baseline, gridSize }) => {
   );
 };
 
+/** Derive aggregate stats from the released anonymized groups. */
+const computeAnonymizedSummary = (stops) => {
+  if (!stops || stops.length === 0) return null;
+
+  const sizes = stops.map((s) => Math.max(0, s.count ?? 0)).sort((a, b) => a - b);
+  const tripsReleased = sizes.reduce((acc, c) => acc + c, 0);
+  const median = sizes.length % 2 === 1
+    ? sizes[(sizes.length - 1) / 2]
+    : (sizes[sizes.length / 2 - 1] + sizes[sizes.length / 2]) / 2;
+
+  let cellsMergedTotal = 0;
+  let maxCellsMerged = 0;
+  const bucketMap = {};
+  const dpShifts = [];
+  let worstGroup = null;
+
+  for (const s of stops) {
+    const cm = s.cellsMerged ?? 0;
+    cellsMergedTotal += cm;
+    if (cm > maxCellsMerged) maxCellsMerged = cm;
+
+    const bucket = s.temporalBucket || "all";
+    bucketMap[bucket] = (bucketMap[bucket] || 0) + 1;
+
+    if (typeof s.dpDisplacementKm === "number") dpShifts.push(s.dpDisplacementKm);
+
+    if (typeof s.spatialErrorMaxKm === "number" &&
+        (!worstGroup || s.spatialErrorMaxKm > worstGroup.spatialErrorMaxKm)) {
+      worstGroup = s;
+    }
+  }
+
+  // Histogram: one bar per exact size when few distinct sizes, otherwise ranged buckets.
+  const minSize = sizes[0];
+  const maxSize = sizes[sizes.length - 1];
+  const distinctSizes = [...new Set(sizes)];
+  let histogram;
+  if (distinctSizes.length <= 6) {
+    histogram = distinctSizes.map((size) => ({
+      label: `${size}`,
+      count: sizes.filter((v) => v === size).length,
+    }));
+  } else {
+    const bucketCount = 6;
+    const span = (maxSize - minSize + 1) / bucketCount;
+    histogram = Array.from({ length: bucketCount }, (_, i) => {
+      const lo = Math.floor(minSize + i * span);
+      const hi = i === bucketCount - 1 ? maxSize : Math.floor(minSize + (i + 1) * span) - 1;
+      return {
+        label: lo === hi ? `${lo}` : `${lo}–${hi}`,
+        count: sizes.filter((v) => v >= lo && v <= hi).length,
+      };
+    });
+  }
+
+  return {
+    groups: stops.length,
+    tripsReleased,
+    medianSize: median,
+    maxSize,
+    avgTripsPerGroup: tripsReleased / stops.length,
+    histogram,
+    cellsMergedTotal,
+    avgCellsMerged: cellsMergedTotal / stops.length,
+    maxCellsMerged,
+    bucketMap,
+    dpShifts,
+    worstGroup,
+  };
+};
+
+/** Anonymized-output summary panel — counterpart of the raw-data baseline on the left map. */
+const AnonymizedGroupsSummary = ({ summary, filter, originalTotal }) => {
+  if (!summary) return null;
+
+  const {
+    tripsReleased, medianSize, maxSize, avgTripsPerGroup, histogram,
+    avgCellsMerged, maxCellsMerged, bucketMap, dpShifts, worstGroup,
+  } = summary;
+
+  const k = filter?.k ?? 5;
+  const dpActive = filter?.epsilon != null && isFinite(filter.epsilon);
+  const temporalActive = (filter?.temporalGranularity ?? "none") !== "none";
+  const coveragePct = originalTotal > 0 ? (tripsReleased / originalTotal) * 100 : null;
+  const maxHistCount = Math.max(...histogram.map((b) => b.count), 1);
+  const buckets = Object.entries(bucketMap).sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <div className="original-baseline-panel">
+      <Divider orientation="left" orientationMargin={0} className="baseline-divider">
+        <Space size={5}>
+          <ClusterOutlined />
+          <span>Released Output Profile</span>
+          <HelpPopover
+            title="Released Output Profile"
+            content={
+              <span>
+                Profile of what was actually published after anonymization — how many trips
+                survived, how group sizes are distributed, and how much spatial generalization
+                was applied. Unlike the metric cards above, these values describe the{" "}
+                <strong>structure of the released dataset</strong> rather than the algorithm's
+                quality scores.
+              </span>
+            }
+          />
+        </Space>
+      </Divider>
+
+      <Row gutter={[8, 8]} align="stretch">
+        <Col xs={8} style={{ display: "flex" }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Trips released</span>
+            <span className="baseline-value">{tripsReleased.toLocaleString()}</span>
+            {dpActive && <span className="baseline-sub">noisy counts (ε-DP)</span>}
+          </div>
+        </Col>
+        <Col xs={8} style={{ display: "flex" }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Coverage of raw data</span>
+            <span className="baseline-value">
+              {coveragePct != null ? `${Math.min(coveragePct, 100).toFixed(1)}%` : "—"}
+            </span>
+            {coveragePct == null && <span className="baseline-sub">load original to compare</span>}
+          </div>
+        </Col>
+        <Col xs={8} style={{ display: "flex" }}>
+          <div className="baseline-stat">
+            <span className="baseline-label">Avg trips&nbsp;/&nbsp;group</span>
+            <span className="baseline-value">{avgTripsPerGroup.toFixed(1)}</span>
+            <span className="baseline-sub">median {medianSize} · max {maxSize}</span>
+          </div>
+        </Col>
+
+        <Col xs={24}>
+          <div className="baseline-row">
+            <div className="baseline-row-header">
+              <Space size={4}>
+                <BarChartOutlined className="baseline-row-icon" />
+                <span className="baseline-label">Group size distribution</span>
+              </Space>
+              <span className="baseline-sub">trips per group (k = {k})</span>
+            </div>
+            <div className="group-size-histogram">
+              {histogram.map((b) => (
+                <Tooltip key={b.label} title={`${b.count} group${b.count === 1 ? "" : "s"} with ${b.label} trips`}>
+                  <div className="gsh-col">
+                    <div className="gsh-bar-track">
+                      <div
+                        className="gsh-bar"
+                        style={{ height: `${Math.max((b.count / maxHistCount) * 100, b.count > 0 ? 8 : 0)}%` }}
+                      />
+                    </div>
+                    <span className="gsh-count">{b.count > 0 ? b.count : ""}</span>
+                    <span className="gsh-label">{b.label}</span>
+                  </div>
+                </Tooltip>
+              ))}
+            </div>
+          </div>
+        </Col>
+
+        <Col xs={temporalActive ? 12 : 24}>
+          <div className="baseline-row" style={{ height: "100%" }}>
+            <Space size={4} style={{ marginBottom: 6 }}>
+              <CompressOutlined className="baseline-row-icon" />
+              <span className="baseline-label">Spatial generalization</span>
+            </Space>
+            <Space size={6} wrap>
+              <Tag color="geekblue" className="baseline-type-tag">
+                avg {avgCellsMerged.toFixed(1)} cells&nbsp;/&nbsp;group
+              </Tag>
+              <Tag color={maxCellsMerged > 3 ? "orange" : "green"} className="baseline-type-tag">
+                widest group spans {maxCellsMerged} cell{maxCellsMerged === 1 ? "" : "s"}
+              </Tag>
+              {worstGroup && typeof worstGroup.spatialErrorMaxKm === "number" && (
+                <Tag color={worstGroup.spatialErrorMaxKm > 1 ? "volcano" : "green"} className="baseline-type-tag">
+                  worst-case error {worstGroup.spatialErrorMaxKm.toFixed(2)} km
+                </Tag>
+              )}
+            </Space>
+          </div>
+        </Col>
+
+        {temporalActive && (
+          <Col xs={12}>
+            <div className="baseline-row" style={{ height: "100%" }}>
+              <Space size={4} style={{ marginBottom: 6 }}>
+                <LineChartOutlined className="baseline-row-icon" />
+                <span className="baseline-label">Groups per time bucket</span>
+              </Space>
+              <Space size={6} wrap>
+                {buckets.map(([bucket, count]) => (
+                  <Tag key={bucket} color="purple" className="baseline-type-tag">
+                    {bucket}&nbsp;—&nbsp;{count}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
+          </Col>
+        )}
+
+        {dpActive && dpShifts.length > 0 && (
+          <Col xs={24}>
+            <div className="baseline-row">
+              <div className="baseline-row-header">
+                <Space size={4}>
+                  <NodeIndexOutlined className="baseline-row-icon" />
+                  <span className="baseline-label">DP centroid shift across groups</span>
+                </Space>
+                <span className="baseline-sub">ε = {filter.epsilon}</span>
+              </div>
+              <Space size={6} wrap style={{ marginTop: 4 }}>
+                <Tag color="green" className="baseline-type-tag">
+                  min {Math.min(...dpShifts).toFixed(2)} km
+                </Tag>
+                <Tag color="gold" className="baseline-type-tag">
+                  median {[...dpShifts].sort((a, b) => a - b)[Math.floor(dpShifts.length / 2)].toFixed(2)} km
+                </Tag>
+                <Tag color="volcano" className="baseline-type-tag">
+                  max {Math.max(...dpShifts).toFixed(2)} km
+                </Tag>
+              </Space>
+            </div>
+          </Col>
+        )}
+
+        <Col xs={24}>
+          <Alert
+            type="success"
+            showIcon
+            className="baseline-risk-alert"
+            message={
+              <span>
+                Every released group aggregates <strong>≥ {k} trips</strong> — no individual
+                trip is distinguishable from at least {k - 1} others. The unique start→end
+                pairs flagged in the raw data baseline are no longer re-identifiable.
+              </span>
+            }
+          />
+        </Col>
+      </Row>
+    </div>
+  );
+};
+
 const MapComponent = ({ mapKey, mapType, onSync, gridSize, title, subtitle, footerContent }) => {
   const mapRef = React.useRef();
 
@@ -848,6 +1093,12 @@ const MapCompare = () => {
   const originalBaseline = React.useMemo(
     () => computeOriginalBaseline(mapStateOriginal.stops, gridSize),
     [mapStateOriginal.stops, gridSize],
+  );
+
+  // Pre-compute released-output summary from anonymized groups whenever they change.
+  const anonymizedSummary = React.useMemo(
+    () => computeAnonymizedSummary(mapStateAnonymized.stops),
+    [mapStateAnonymized.stops],
   );
 
   // dataSourceInfo is now provided by useDataSources() above — no separate fetch needed.
@@ -1734,6 +1985,17 @@ const MapCompare = () => {
           gridSize={gridSize}
           title="Anonymized Groups"
           subtitle="Released centroids and heat intensity after the selected privacy settings."
+          footerContent={
+            anonymizedSummary
+              ? (
+                <AnonymizedGroupsSummary
+                  summary={anonymizedSummary}
+                  filter={mapStateAnonymized.filter}
+                  originalTotal={originalBaseline?.total ?? 0}
+                />
+              )
+              : null
+          }
         />
       </div>
     </div>

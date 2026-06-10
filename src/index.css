@@ -1454,6 +1454,61 @@ body {
   font-size: 11px !important;
 }
 
+/* Group-size histogram (anonymized output profile) */
+.group-size-histogram {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.gsh-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gsh-bar-track {
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.gsh-bar {
+  width: 70%;
+  max-width: 36px;
+  background: #2563eb;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.3s ease;
+}
+
+.gsh-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--app-text);
+  line-height: 1.2;
+  min-height: 12px;
+}
+
+.gsh-label {
+  font-size: 10px;
+  color: var(--app-muted);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.theme-dark .gsh-bar {
+  background: #3b82f6;
+}
+
 /* Re-identification risk alert */
 .baseline-risk-alert {
   padding: 7px 10px !important;
