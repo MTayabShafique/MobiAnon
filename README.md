@@ -24,6 +24,58 @@ The project supports:
 - Benchmark scripts and paper-ready report/figure generation.
 - Suppression-only and fixed-grid baseline comparison against the merge-nearest anonymization method.
 
+## Visual Overview
+
+The submitted paper focuses on the architecture, anonymization pipeline, and benchmark results. The screenshots below show the application interface that reviewers can inspect when they open this repository.
+
+### 1. Main Tool: Original vs Anonymized Trips
+
+![Main Tool: Original vs Anonymized Trips](readme_assets/01-tool-overview.png)
+
+This is the core MobiAnon interaction: raw mobility trips are shown next to the anonymized release so users can visually compare spatial patterns and utility loss.
+
+### 2. Privacy Settings and Metrics
+
+![Privacy Settings and Metrics](readme_assets/02-privacy-settings-and-metrics.png)
+
+The controls expose grid size, k, temporal privacy, l-diversity, sensitive attributes, and epsilon-DP noise. The metric cards summarize privacy validity and utility loss in the same view.
+
+### 3. Multi-k Comparison
+
+![Multi-k Comparison](readme_assets/03-multi-k-comparison.png)
+
+The comparison panel runs the same query for multiple k values, helping users see how stronger anonymity changes suppression, spatial error, density similarity, and hotspot overlap.
+
+### 4. 3D Privacy-Utility Landscape
+
+![3D Privacy-Utility Landscape](readme_assets/04-3d-privacy-utility-landscape.png)
+
+The 3D landscape gives an interactive overview of privacy-utility tradeoffs across k-anonymity, l-diversity, and epsilon-DP scenarios.
+
+### 5. Upload and Data Management: Resumable Import
+
+![Upload and Data Management: Resumable Import](readme_assets/05-upload-and-data-management-during-upload.png)
+
+The upload page supports user mobility CSV files, sample downloads, resumable chunk upload, and duplicate handling. This screenshot shows a Citi Bike sample being imported in chunks while the application keeps upload progress visible.
+
+### 6. Upload and Data Management: Import Summary
+
+![Upload and Data Management: Import Summary](readme_assets/06-upload-and-data-management-success.png)
+
+After upload, the page reports rows read, records inserted, duplicate records, skipped rows, validation details, the active user-data count, and the detected date range that will drive the Tool page date picker.
+
+### 7. Upload and Data Management: Clearing User Data
+
+![Upload and Data Management: Clearing User Data](readme_assets/07-upload-and-data-management-during-delete.png)
+
+Uploaded data is isolated from the preloaded demo data and can be cleared safely. The delete workflow streams batch progress so users can see how many records have been removed.
+
+### 8. In-App Guide
+
+![In-App Guide](readme_assets/08-in-app-guide.png)
+
+The guide explains supported CSV formats, privacy models, metrics, and application workflow for users who are not privacy experts.
+
 ## Reproducibility
 
 For setup, Laragon/MySQL instructions, database creation, data import, benchmark commands, report generation, and known limitations, see:

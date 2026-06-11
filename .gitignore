@@ -57,6 +57,6 @@ bicycle-be/**/*.generated.json
 coverage/
 .nyc_output/
 
-# Documentation / paper write-up folders (generated, not source)
+# Generated documentation / paper write-up artifacts
 /docs
 /paper
